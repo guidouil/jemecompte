@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: jemecompte
+      POSTGRES_PASSWORD: jemecompte_local
+      POSTGRES_DB: jemecompte
+    ports:
+      - '127.0.0.1:55439:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U jemecompte -d jemecompte']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  postgres_data:

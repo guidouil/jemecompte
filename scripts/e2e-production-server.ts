@@ -1,0 +1,10 @@
+const url = process.env.TEST_DATABASE_URL;
+if (!url || !new URL(url).pathname.endsWith('_test')) throw new Error('A dedicated _test database is required.');
+process.env.DATABASE_URL = url;
+process.env.ORIGIN = 'http://127.0.0.1:5176';
+process.env.HOST = '127.0.0.1';
+process.env.PORT = '5176';
+process.env.REAL_EVENTS_APPROVED = 'false';
+const builtServer = new URL('../build/index.js', import.meta.url);
+await import(builtServer.href);
+export {};

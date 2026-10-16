@@ -1,0 +1,176 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CounterSnapshot } from '../../src/lib/shared/types';
+
+const getCounterSnapshot = vi.hoisted(() => vi.fn());
+vi.mock('../../src/lib/server/counters', () => ({ getCounterSnapshot }));
+
+const eventId = 'ea935eb8-2a5f-4802-b7be-5c2ec116c71a';
+let realtime: typeof import('../../src/lib/server/realtime');
+const abortControllers: AbortController[] = [];
+
+function snapshot(overrides: Partial<CounterSnapshot> = {}): CounterSnapshot {
+  return {
+    eventId, total: '5', revision: '5', day: '2026-10-16', nationalTotal: '8', nationalRevision: '8',
+    cityTotal: '5', cityRevision: '5', epoch: '1', serverTime: '2026-10-16T13:00:00.000Z',
+    eventStatus: 'published', integrityStatus: 'normal', metadataVersion: 1,
+    startsAt: '2026-10-16T12:00:00.000Z', endsAt: '2026-10-16T18:00:00.000Z', ...overrides
+  };
+}
+
+function signal(): AbortSignal {
+  const controller = new AbortController();
+  abortControllers.push(controller);
+  return controller.signal;
+}
+
+function readerFor(response: Response | null): ReadableStreamDefaultReader<Uint8Array> {
+  expect(response).not.toBeNull();
+  expect(response?.headers.get('content-type')).toBe('text/event-stream; charset=utf-8');
+  expect(response?.headers.get('cache-control')).toBe('no-store, no-transform');
+  expect(response?.headers.get('x-accel-buffering')).toBe('no');
+  if (!response?.body) throw new Error('Expected a readable counter stream.');
+  return response.body.getReader();
+}
+
+async function readSnapshot(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<CounterSnapshot> {
+  const result = await reader.read();
+  expect(result.done).toBe(false);
+  const frame = new TextDecoder().decode(result.value);
+  expect(frame).toContain('event: counters\n');
+  expect(frame.endsWith('\n\n')).toBe(true);
+  const data = frame.split('\n').find((line) => line.startsWith('data: '));
+  if (!data) throw new Error('Expected an absolute counter snapshot.');
+  return JSON.parse(data.slice('data: '.length)) as CounterSnapshot;
+}
+
+beforeEach(async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-10-16T13:00:00.000Z'));
+  vi.resetModules();
+  getCounterSnapshot.mockReset();
+  realtime = await import('../../src/lib/server/realtime');
+});
+
+afterEach(() => {
+  for (const controller of abortControllers.splice(0)) controller.abort();
+  vi.clearAllTimers();
+  vi.useRealTimers();
+});
+
+describe('shared realtime counter scheduler', () => {
+  it('coalesces initial reads and broadcasts one absolute snapshot per channel to every subscriber', async () => {
+    let resolveInitial!: (value: CounterSnapshot) => void;
+    getCounterSnapshot.mockImplementationOnce(() => new Promise<CounterSnapshot>((resolve) => {
+      resolveInitial = resolve;
+    }));
+    const requests = Array.from({ length: 3 }, () => realtime.counterStream(eventId, signal()));
+    expect(getCounterSnapshot).toHaveBeenCalledExactlyOnceWith(eventId);
+    resolveInitial(snapshot());
+    const responses = await Promise.all(requests);
+    const readers = responses.map(readerFor);
+    expect(realtime.realtimeMetrics()).toEqual({ connections: 3, channels: 1 });
+    expect(vi.getTimerCount()).toBe(1);
+    const initial = await Promise.all(readers.map(readSnapshot));
+    expect(initial.map((value) => value.total)).toEqual(['5', '5', '5']);
+
+    const next = snapshot({
+      total: '90071992547409930', revision: '90071992547409931',
+      nationalTotal: '90071992547409935', nationalRevision: '90071992547409936',
+      metadataVersion: 2, eventStatus: 'paused', serverTime: '2026-10-16T13:00:03.000Z'
+    });
+    getCounterSnapshot.mockResolvedValue(next);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(getCounterSnapshot).toHaveBeenCalledTimes(2);
+    const frames = await Promise.all(readers.map(readSnapshot));
+    expect(frames).toEqual([next, next, next]);
+    // Reading frames never queries the database and no per-client interval is created.
+    expect(getCounterSnapshot).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(1);
+    for (const controller of abortControllers) controller.abort();
+    for (const reader of readers) expect((await reader.read()).done).toBe(true);
+    expect(realtime.realtimeMetrics().connections).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('cleans up subscriptions, abort listeners and the last timer on abort or reader cancellation', async () => {
+    getCounterSnapshot.mockResolvedValue(snapshot());
+    const firstSignal = signal();
+    const removeAbortListener = vi.spyOn(firstSignal, 'removeEventListener');
+    const first = readerFor(await realtime.counterStream(eventId, firstSignal));
+    await readSnapshot(first);
+    abortControllers[0]!.abort();
+    expect((await first.read()).done).toBe(true);
+    expect(removeAbortListener).toHaveBeenCalledWith('abort', expect.any(Function));
+    expect(realtime.realtimeMetrics().connections).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+
+    const second = readerFor(await realtime.counterStream(eventId, signal()));
+    await readSnapshot(second);
+    // A fresh public snapshot is reusable for a new connection without a new DB read.
+    expect(getCounterSnapshot).toHaveBeenCalledTimes(1);
+    await second.cancel();
+    expect(realtime.realtimeMetrics().connections).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect(getCounterSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it('admits no subscription or scheduler for an already aborted request', async () => {
+    getCounterSnapshot.mockResolvedValue(snapshot());
+    const aborted = signal();
+    abortControllers[0]!.abort();
+    const reader = readerFor(await realtime.counterStream(eventId, aborted));
+    expect((await reader.read()).done).toBe(true);
+    expect(realtime.realtimeMetrics().connections).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('closes all affected subscribers after a DB failure without exposing an error frame', async () => {
+    getCounterSnapshot.mockResolvedValueOnce(snapshot());
+    const first = readerFor(await realtime.counterStream(eventId, signal()));
+    const second = readerFor(await realtime.counterStream(eventId, signal()));
+    await Promise.all([readSnapshot(first), readSnapshot(second)]);
+    getCounterSnapshot.mockRejectedValueOnce(new Error('SQL failure containing private diagnostics'));
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(getCounterSnapshot).toHaveBeenCalledTimes(2);
+    expect(await first.read()).toEqual({ value: undefined, done: true });
+    expect(await second.read()).toEqual({ value: undefined, done: true });
+    expect(realtime.realtimeMetrics().connections).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('does not overlap database refreshes while a previous scheduler tick is still pending', async () => {
+    getCounterSnapshot.mockResolvedValueOnce(snapshot());
+    const reader = readerFor(await realtime.counterStream(eventId, signal()));
+    await readSnapshot(reader);
+    let resolveRefresh!: (value: CounterSnapshot) => void;
+    getCounterSnapshot.mockImplementationOnce(() => new Promise<CounterSnapshot>((resolve) => {
+      resolveRefresh = resolve;
+    }));
+    await vi.advanceTimersByTimeAsync(3_000);
+    await vi.advanceTimersByTimeAsync(9_000);
+    expect(getCounterSnapshot).toHaveBeenCalledTimes(2);
+    const next = snapshot({ total: '6', revision: '6' });
+    resolveRefresh(next);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await readSnapshot(reader)).toEqual(next);
+  });
+
+  it('disconnects a slow consumer instead of accumulating snapshots in memory', async () => {
+    getCounterSnapshot.mockResolvedValue(snapshot());
+    const reader = readerFor(await realtime.counterStream(eventId, signal()));
+    // The first frame fills the queue. The consumer deliberately does not read it before the tick.
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(realtime.realtimeMetrics().connections).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+    expect((await readSnapshot(reader)).total).toBe('5');
+    expect((await reader.read()).done).toBe(true);
+  });
+
+  it('returns no stream or retained channel for a missing event', async () => {
+    getCounterSnapshot.mockResolvedValue(null);
+    expect(await realtime.counterStream(eventId, signal())).toBeNull();
+    expect(realtime.realtimeMetrics()).toEqual({ connections: 0, channels: 0 });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});

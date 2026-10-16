@@ -1,0 +1,141 @@
+import type { CounterSnapshot } from '../shared/types';
+import { getCounterSnapshot } from './counters';
+
+interface Subscriber {
+  controller: ReadableStreamDefaultController<Uint8Array>;
+  close: () => void;
+}
+interface Channel {
+  id: string;
+  snapshot: CounterSnapshot | null;
+  subscribers: Set<Subscriber>;
+  pending: Promise<CounterSnapshot | null> | null;
+  touchedAt: number;
+}
+const channels = new Map<string, Channel>();
+const encoder = new TextEncoder();
+let scheduler: ReturnType<typeof setInterval> | undefined;
+let ticking = false;
+const MAX_CLIENTS = 6_000;
+const MAX_CHANNELS = 100;
+
+export class StreamUnavailable extends Error {}
+
+function clientCount(): number {
+  let count = 0;
+  for (const channel of channels.values()) count += channel.subscribers.size;
+  return count;
+}
+
+function stopIfIdle(): void {
+  if (clientCount() === 0 && scheduler) {
+    clearInterval(scheduler);
+    scheduler = undefined;
+  }
+}
+
+function enqueue(subscriber: Subscriber, message: Uint8Array): void {
+  try {
+    if ((subscriber.controller.desiredSize ?? 0) <= 0) {
+      subscriber.close();
+      return;
+    }
+    subscriber.controller.enqueue(message);
+  } catch { subscriber.close(); }
+}
+
+async function refresh(channel: Channel): Promise<CounterSnapshot | null> {
+  if (channel.pending) return channel.pending;
+  channel.pending = getCounterSnapshot(channel.id);
+  try {
+    channel.snapshot = await channel.pending;
+    channel.touchedAt = Date.now();
+    return channel.snapshot;
+  } finally { channel.pending = null; }
+}
+
+async function tick(): Promise<void> {
+  if (ticking) return;
+  ticking = true;
+  try {
+    await Promise.all([...channels.values()].map(async (channel) => {
+      if (channel.subscribers.size === 0) {
+        if (Date.now() - channel.touchedAt > 30_000) channels.delete(channel.id);
+        return;
+      }
+      try {
+        const snapshot = await refresh(channel);
+        if (!snapshot) {
+          for (const subscriber of [...channel.subscribers]) subscriber.close();
+          return;
+        }
+        const frame = encoder.encode(`event: counters\ndata: ${JSON.stringify(snapshot)}\n\n`);
+        for (const subscriber of [...channel.subscribers]) enqueue(subscriber, frame);
+      } catch {
+        // No error object or SQL parameters on a public stream. Reconnection gets durable state.
+        for (const subscriber of [...channel.subscribers]) subscriber.close();
+      }
+    }));
+  } finally {
+    ticking = false;
+    stopIfIdle();
+  }
+}
+
+export async function counterStream(eventId: string, signal: AbortSignal): Promise<Response | null> {
+  if (clientCount() >= MAX_CLIENTS) throw new StreamUnavailable();
+  let channel = channels.get(eventId);
+  if (!channel) {
+    for (const [id, candidate] of channels) {
+      if (!candidate.subscribers.size && !candidate.pending) channels.delete(id);
+      if (channels.size < MAX_CHANNELS) break;
+    }
+    if (channels.size >= MAX_CHANNELS) throw new StreamUnavailable();
+    channel = { id: eventId, snapshot: null, subscribers: new Set(), pending: null, touchedAt: 0 };
+    channels.set(eventId, channel);
+  }
+  if (!channel.snapshot || Date.now() - channel.touchedAt > 3_000) await refresh(channel);
+  if (!channel.snapshot) {
+    if (!channel.subscribers.size) channels.delete(eventId);
+    return null;
+  }
+  // Pending initial DB reads can resolve together; recheck before admitting each client.
+  if (clientCount() >= MAX_CLIENTS) throw new StreamUnavailable();
+  const activeChannel = channel;
+  let close: (() => void) | undefined;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      let closed = false;
+      const subscriber: Subscriber = { controller, close: () => close?.() };
+      close = () => {
+        if (closed) return;
+        closed = true;
+        signal.removeEventListener('abort', subscriber.close);
+        activeChannel.subscribers.delete(subscriber);
+        activeChannel.touchedAt = Date.now();
+        try { controller.close(); } catch { /* already cancelled */ }
+        stopIfIdle();
+      };
+      if (signal.aborted) { close(); return; }
+      activeChannel.subscribers.add(subscriber);
+      signal.addEventListener('abort', subscriber.close, { once: true });
+      enqueue(subscriber, encoder.encode(`retry: 5000\nevent: counters\ndata: ${JSON.stringify(activeChannel.snapshot)}\n\n`));
+      if (!scheduler) {
+        scheduler = setInterval(() => void tick(), 3_000);
+        scheduler.unref();
+      }
+    },
+    cancel() { close?.(); }
+  });
+  return new Response(stream, {
+    headers: {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-store, no-transform',
+      'x-accel-buffering': 'no'
+    }
+  });
+}
+
+export function realtimeMetrics() {
+  return { connections: clientCount(), channels: channels.size };
+}

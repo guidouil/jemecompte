@@ -1,0 +1,10 @@
+{
+  "extends": "$app/tsconfig",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "types": ["node", "$app/types"]
+  },
+  "include": ["src", "tests", "scripts", "*.ts"],
+  "exclude": ["node_modules", "build", "src/service-worker"]
+}

@@ -1,0 +1,59 @@
+{
+  "name": "jemecompte",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.17.0"
+  },
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env node_modules/vite/bin/vite.js dev --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "node --env-file-if-exists=.env scripts/preview.mjs",
+    "start": "node --env-file-if-exists=.env build",
+    "prepare": "svelte-kit sync",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc -p src/service-worker/tsconfig.json",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:e2e": "node --env-file-if-exists=.env node_modules/@playwright/test/cli.js test",
+    "db:migrate": "node --env-file-if-exists=.env --import tsx scripts/migrate.ts",
+    "db:generate": "drizzle-kit generate",
+    "admin": "node --env-file-if-exists=.env --import tsx scripts/admin.ts",
+    "db:reconcile": "node --env-file-if-exists=.env --import tsx scripts/reconcile.ts",
+    "db:purge": "node --env-file-if-exists=.env --import tsx scripts/purge.ts",
+    "test:pwa": "node --env-file-if-exists=.env node_modules/@playwright/test/cli.js test --config=playwright.production.config.ts",
+    "test:load": "node --env-file-if-exists=.env --import tsx scripts/load-smoke.ts"
+  },
+  "dependencies": {
+    "@turf/boolean-point-in-polygon": "7.4.0",
+    "@turf/kinks": "7.4.0",
+    "drizzle-orm": "0.45.4",
+    "leaflet": "1.9.4",
+    "pg": "8.23.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.64.1",
+    "@sveltejs/adapter-node": "6.0.0",
+    "@sveltejs/kit": "3.1.0",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@types/geojson": "7946.0.16",
+    "@types/leaflet": "1.9.21",
+    "@types/node": "26.6.5",
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "0.31.11",
+    "fake-indexeddb": "6.2.5",
+    "svelte": "5.57.2",
+    "svelte-check": "4.7.6",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "vite": "8.3.4",
+    "vitest": "5.0.5"
+  },
+  "imports": {
+    "#lib/*.svelte": "./src/lib/*.svelte",
+    "#lib/*": "./src/lib/*.ts"
+  }
+}
