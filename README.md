@@ -82,9 +82,7 @@ Le drapeau `REAL_EVENTS_APPROVED=true` n'est pas une validation juridique. Il ne
 SvelteKit 3, Svelte 5, TypeScript strict, CSS natif, PostgreSQL et schéma Drizzle ; API dans le même processus Node. L'unicité SQL et l'incrément sont transactionnels. SSE diffuse des snapshots regroupés, avec polling de secours. La PWA cache des ressources publiques ; aucune file de participations différées n'est créditée après clôture.
 
 - [Base, migrations et CLI](docs/adr/002-database.md)
-- [Déploiement Node/Caddy](ops/deployment.md)
-- [Déploiement Clever Cloud](ops/clever-cloud.md)
-- [Incidents et restauration](ops/incident-runbook.md)
+- [Déploiement](docs/deployment.md)
 - [Recette du pilote](docs/pilot-checklist.md)
 - [Signalement sécurité](SECURITY.md)
 

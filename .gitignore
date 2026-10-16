@@ -14,3 +14,4 @@ coverage/
 *.sql.gz
 .local/
 .clever.json
+ops/
