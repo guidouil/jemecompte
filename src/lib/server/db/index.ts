@@ -7,9 +7,10 @@ let pool: Pool | undefined;
 /** Lazy: builds and prerendering must not need a database connection. */
 export function getPool(): Pool {
   if (!pool) {
-    if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required for database operations.');
+    const connectionString = process.env.DATABASE_URL || process.env.POSTGRESQL_ADDON_URI;
+    if (!connectionString) throw new Error('DATABASE_URL or POSTGRESQL_ADDON_URI is required for database operations.');
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString,
       max: 15,
       connectionTimeoutMillis: 3_000,
       idleTimeoutMillis: 30_000,

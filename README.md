@@ -6,7 +6,7 @@ Prototype de comptage volontaire, sans compte participant : **« X personnes se 
 
 ## Démarrer localement
 
-Prérequis : Node ≥22.17, npm et Docker Compose. Les dépendances stables sont fixées dans `package.json` et `package-lock.json`.
+Prérequis : Node 24.x (voir `.nvmrc`), npm et Docker Compose. Les dépendances stables sont fixées dans `package.json` et `package-lock.json`.
 
 ```sh
 npm ci
@@ -83,6 +83,7 @@ SvelteKit 3, Svelte 5, TypeScript strict, CSS natif, PostgreSQL et schéma Drizz
 
 - [Base, migrations et CLI](docs/adr/002-database.md)
 - [Déploiement Node/Caddy](ops/deployment.md)
+- [Déploiement Clever Cloud](ops/clever-cloud.md)
 - [Incidents et restauration](ops/incident-runbook.md)
 - [Recette du pilote](docs/pilot-checklist.md)
 - [Signalement sécurité](SECURITY.md)
