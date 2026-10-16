@@ -1,17 +1,18 @@
 <script lang="ts">
-  import { onDestroy, type Component } from 'svelte';
+  import { onDestroy, onMount, type Component } from 'svelte';
   import { summarizePerimeter } from '#lib/shared/perimeter-summary';
   import type { PublicEvent } from '#lib/shared/types';
 
   let { event }: { event: PublicEvent } = $props();
   const uid = $props.id();
   let expanded = $state(false);
+  let ready = $state(false);
   let loading = $state(false);
   let failed = $state(false);
   let MapComponent = $state<Component<{ event: PublicEvent }> | null>(null);
   let generation = 0;
   let disposed = false;
-  let summary = $derived(summarizePerimeter(event.geofence));
+  let summary = $derived(summarizePerimeter(event.geofence, event.countingScope));
 
   function formatLength(meters: number) {
     return meters >= 1_000 ? `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(meters / 1_000)} km` :
@@ -38,6 +39,7 @@
   }
 
   function toggle() {
+    if (!ready) return;
     expanded = !expanded;
     if (!expanded) {
       generation += 1;
@@ -48,12 +50,13 @@
     }
   }
 
+  onMount(() => { ready = true; });
   onDestroy(() => { disposed = true; generation += 1; });
 </script>
 
 <section class="event-perimeter" aria-labelledby={`${uid}-heading`}>
-  <div class="perimeter-header"><h3 id={`${uid}-heading`}>Zone de comptage</h3><button type="button" class="text-button" onclick={toggle} aria-expanded={expanded} aria-controls={`${uid}-map-panel`}>{expanded ? 'Masquer le périmètre' : 'Voir le périmètre'} <span aria-hidden="true">{expanded ? '−' : '+'}</span></button></div>
-  <p class="perimeter-summary">{#if summary.kind === 'circle' && summary.approximateRadiusMeters !== null}Rayon approx. : {formatLength(summary.approximateRadiusMeters)}{:else}Périmètre personnalisé{/if}{#if summary.approximateAreaSquareMeters !== null}<span class="summary-separator" aria-hidden="true"> · </span>Superficie approx. : {formatArea(summary.approximateAreaSquareMeters)}{/if}</p>
+  <div class="perimeter-header"><h3 id={`${uid}-heading`}>Zone de comptage</h3><button type="button" class="text-button" onclick={toggle} disabled={!ready} aria-expanded={expanded} aria-controls={`${uid}-map-panel`}>{expanded ? 'Masquer le périmètre' : 'Voir le périmètre'} <span aria-hidden="true">{expanded ? '−' : '+'}</span></button></div>
+  <p class="perimeter-summary">{#if event.countingScope === 'city'}Toute la commune · contour administratif{:else if summary.kind === 'circle' && summary.approximateRadiusMeters !== null}Rayon approx. : {formatLength(summary.approximateRadiusMeters)}{:else}Périmètre personnalisé{/if}{#if summary.approximateAreaSquareMeters !== null}<span class="summary-separator" aria-hidden="true"> · </span>Superficie approx. : {formatArea(summary.approximateAreaSquareMeters)}{/if}</p>
   <p class="position-note">Votre position n’est pas affichée sur cette carte.</p>
   <div id={`${uid}-map-panel`} hidden={!expanded}>
     {#if expanded}

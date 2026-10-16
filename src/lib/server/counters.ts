@@ -1,22 +1,24 @@
 import { counterEpoch, getPool, isEventId, type DatabaseConnection } from './db';
-import type { CounterSnapshot } from '../shared/types';
+import type { CountingScope, CounterSnapshot } from '../shared/types';
 
 interface SnapshotRow {
   event_id: string; total: string; revision: string; day: string; national_total: string;
   national_revision: string; city_total: string; city_revision: string; server_time: Date;
   status: CounterSnapshot['eventStatus']; integrity_status: CounterSnapshot['integrityStatus'];
   metadata_version: number; starts_at: Date; ends_at: Date; presence_exists: boolean; details_expired: boolean;
+  counting_scope: CountingScope;
 }
 
 /** One statement = one MVCC snapshot, including the optional individual status and purge marker. */
 export async function readCounterSnapshot(
-  connection: DatabaseConnection, eventId: string, anonymousId: Buffer | null = null
+  connection: DatabaseConnection, eventId: string, anonymousId: Buffer | null = null, isTest?: boolean
 ): Promise<{ snapshot: CounterSnapshot; exists: boolean; detailsExpired: boolean } | null> {
   const { rows } = await connection.query<SnapshotRow>(`
-    WITH target AS (SELECT * FROM events WHERE id = $1 AND status <> 'draft'),
-    current_clock AS MATERIALIZED (SELECT clock_timestamp() AS instant),
+    WITH target AS (SELECT * FROM events WHERE id = $1 AND status <> 'draft'
+      AND ($3::boolean IS NULL OR is_test = $3)),
+    current_clock AS MATERIALIZED (SELECT statement_timestamp() AS instant),
     current_day AS (SELECT (instant AT TIME ZONE 'Europe/Paris')::date AS day, instant FROM current_clock)
-    SELECT target.id AS event_id, target.status, target.integrity_status, target.metadata_version,
+    SELECT target.id AS event_id, target.counting_scope, target.status, target.integrity_status, target.metadata_version,
       target.starts_at, target.ends_at, current_day.day::text, current_day.instant AS server_time,
       COALESCE(own.total, 0)::text AS total, COALESCE(own.revision, 0)::text AS revision,
       COALESCE(daily.national_total, 0)::text AS national_total,
@@ -38,12 +40,14 @@ export async function readCounterSnapshot(
         sum(c.revision) FILTER (WHERE e.city_code = target.city_code) AS city_revision
       FROM event_counters c JOIN events e ON e.id = c.event_id
       WHERE c.counting_day = current_day.day AND e.is_test = target.is_test
-    ) daily ON true`, [eventId, anonymousId]);
+        AND e.counting_scope = target.counting_scope
+    ) daily ON true`, [eventId, anonymousId, isTest ?? null]);
   const row = rows[0];
   if (!row) return null;
   return {
     snapshot: {
       eventId: row.event_id, total: row.total, revision: row.revision, day: row.day,
+      countingScope: row.counting_scope,
       nationalTotal: row.national_total, nationalRevision: row.national_revision,
       cityTotal: row.city_total, cityRevision: row.city_revision, epoch: counterEpoch(),
       serverTime: row.server_time.toISOString(), eventStatus: row.status,
@@ -53,18 +57,18 @@ export async function readCounterSnapshot(
   };
 }
 
-export async function getCounterSnapshot(eventId: string): Promise<CounterSnapshot | null> {
+export async function getCounterSnapshot(eventId: string, isTest?: boolean): Promise<CounterSnapshot | null> {
   if (!isEventId(eventId)) return null;
-  return (await readCounterSnapshot(getPool(), eventId))?.snapshot ?? null;
+  return (await readCounterSnapshot(getPool(), eventId, null, isTest))?.snapshot ?? null;
 }
 
-export async function getNationalTotal(isTest = true): Promise<string> {
+export async function getNationalTotal(isTest = true, countingScope: CountingScope = 'gathering'): Promise<string> {
   const { rows } = await getPool().query<{ total: string }>(`
     WITH current_day AS MATERIALIZED (
       SELECT (clock_timestamp() AT TIME ZONE 'Europe/Paris')::date AS day
     )
     SELECT COALESCE(sum(c.count), 0)::text AS total
     FROM event_counters c JOIN events e ON e.id = c.event_id CROSS JOIN current_day
-    WHERE e.is_test = $1 AND c.counting_day = current_day.day`, [isTest]);
+    WHERE e.is_test = $1 AND e.counting_scope = $2 AND c.counting_day = current_day.day`, [isTest, countingScope]);
   return rows[0]?.total ?? '0';
 }

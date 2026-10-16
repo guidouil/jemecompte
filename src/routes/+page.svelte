@@ -6,4 +6,4 @@
 
 <svelte:head><title>JeMeCompte — chaque présence compte</title></svelte:head>
 
-<CountExperience events={data.events} selectedEvent={data.selectedEvent} snapshot={data.snapshot} nationalTotal={data.nationalTotal} serviceAvailable={data.serviceAvailable} />
+<CountExperience events={data.events} selectedEvent={data.selectedEvent} snapshot={data.snapshot} nationalTotal={data.nationalTotal} nationalCityTotal={data.nationalCityTotal} nationalLoadedAt={data.nationalLoadedAt} serviceAvailable={data.serviceAvailable} />

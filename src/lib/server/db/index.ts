@@ -3,6 +3,7 @@ import { Pool, type PoolClient } from 'pg';
 import * as schema from './schema';
 
 let pool: Pool | undefined;
+let adminPool: Pool | undefined;
 
 /** Lazy: builds and prerendering must not need a database connection. */
 export function getPool(): Pool {
@@ -27,8 +28,30 @@ export function getPool(): Pool {
 export function getDb() { return drizzle(getPool(), { schema }); }
 export type DatabaseConnection = Pool | PoolClient;
 
-export async function transaction<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {
-  const client = await getPool().connect();
+/** A separate administrative credential can preserve the public role's restricted privileges. */
+export function getAdminPool(): Pool {
+  if (!process.env.ADMIN_DATABASE_URL) return getPool();
+  if (!adminPool) {
+    adminPool = new Pool({
+      connectionString: process.env.ADMIN_DATABASE_URL, max: 2, connectionTimeoutMillis: 3_000,
+      idleTimeoutMillis: 30_000, statement_timeout: 8_000, idle_in_transaction_session_timeout: 10_000,
+      application_name: 'jemecompte-gui'
+    });
+    adminPool.on('error', () => { /* Administrative failures are sanitized by their caller. */ });
+  }
+  return adminPool;
+}
+
+export function transaction<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {
+  return inTransaction(getPool(), operation);
+}
+
+export function adminTransaction<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {
+  return inTransaction(getAdminPool(), operation);
+}
+
+async function inTransaction<T>(connectionPool: Pool, operation: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await connectionPool.connect();
   try {
     await client.query('BEGIN');
     const result = await operation(client);
@@ -44,8 +67,11 @@ export async function transaction<T>(operation: (client: PoolClient) => Promise<
 
 export async function closeDatabase(): Promise<void> {
   const current = pool;
+  const currentAdmin = adminPool;
   pool = undefined;
+  adminPool = undefined;
   if (current) await current.end();
+  if (currentAdmin) await currentAdmin.end();
 }
 
 export function counterEpoch(): string {

@@ -1,0 +1,5 @@
+@page { margin: 20mm; }
+body { font: 20px/1.5 system-ui, sans-serif; color: #000; background: #fff; text-align: center; margin: 0; }
+h1 { font-size: 32px; overflow-wrap: anywhere; }
+img { display: block; width: 110mm; max-width: 100%; height: auto; margin: 12mm auto; }
+.link { font-size: 16px; overflow-wrap: anywhere; }

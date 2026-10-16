@@ -3,7 +3,7 @@ import {
   bigint, bigserial, boolean, check, customType, date, integer, jsonb,
   pgTable, primaryKey, timestamp, uuid, varchar
 } from 'drizzle-orm/pg-core';
-import type { Polygon } from 'geojson';
+import type { CountingScope, EventGeofence } from '../../shared/types';
 
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => 'bytea' });
 
@@ -14,7 +14,8 @@ export const events = pgTable('events', {
   cityCode: varchar('city_code', { length: 20 }).notNull(),
   cityName: varchar('city_name', { length: 120 }).notNull(),
   description: varchar('description', { length: 2000 }),
-  geofence: jsonb('geofence').$type<Polygon>().notNull(),
+  geofence: jsonb('geofence').$type<EventGeofence>().notNull(),
+  countingScope: varchar('counting_scope', { length: 16 }).$type<CountingScope>().notNull().default('gathering'),
   geofenceVersion: integer('geofence_version').notNull().default(1),
   metadataVersion: integer('metadata_version').notNull().default(1),
   startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
@@ -38,7 +39,8 @@ export const events = pgTable('events', {
   check('events_status_check', sql`${table.status} IN ('draft','published','paused','closed','cancelled')`),
   check('events_integrity_check', sql`${table.integrityStatus} IN ('normal','anomaly','suspended')`),
   check('events_versions_check', sql`${table.geofenceVersion} > 0 AND ${table.metadataVersion} > 0 AND ${table.protocolVersion} = 1`),
-  check('events_polygon_check', sql`COALESCE(jsonb_typeof(${table.geofence}) = 'object' AND ${table.geofence}->>'type' = 'Polygon' AND jsonb_typeof(${table.geofence}->'coordinates') = 'array', false)`),
+  check('events_counting_scope_check', sql`${table.countingScope} IN ('gathering','city')`),
+  check('events_polygon_check', sql`COALESCE(jsonb_typeof(${table.geofence}) = 'object' AND jsonb_typeof(${table.geofence}->'coordinates') = 'array' AND ((${table.countingScope} = 'gathering' AND ${table.geofence}->>'type' = 'Polygon') OR (${table.countingScope} = 'city' AND ${table.geofence}->>'type' IN ('Polygon','MultiPolygon'))), false)`),
   check('events_creation_source_check', sql`${table.creationSource} IN ('team','community')`),
   check('events_creation_hash_check', sql`(${table.creationSource} = 'team' AND ${table.creationRequestHash} IS NULL) OR (${table.creationSource} = 'community' AND ${table.creationRequestHash} IS NOT NULL AND octet_length(${table.creationRequestHash}) = 32)`)
 ]);

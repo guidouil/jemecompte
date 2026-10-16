@@ -1,22 +1,19 @@
 import { self } from '$app/service-worker';
 import { version } from '$app/env';
 import { immutable, assets } from '$app/manifest';
+import {
+  PUBLIC_CACHE_PREFIX, PUBLIC_CACHE_GENERATION, PUBLIC_PAGES, isPrivatePath,
+  purgeObsoletePublicCaches, shouldHandlePublicRequest, shouldStorePublicResponse
+} from './cache-policy';
 
-const PREFIX = 'jemecompte-public-';
-const CACHE = `${PREFIX}${version}`;
-const STATIC = [...immutable, ...assets].map((asset) => `/${asset.path.replace(/^\//, '')}`);
+const CACHE = `${PUBLIC_CACHE_PREFIX}${PUBLIC_CACHE_GENERATION}${version}`;
+const STATIC = [...immutable, ...assets].map((asset) => `/${asset.path.replace(/^\//, '')}`)
+  .filter((path) => !isPrivatePath(new URL(path, self.location.origin).pathname));
 const staticPaths = new Set(STATIC);
-const PUBLIC_PAGES = ['/', '/comment-ca-marche', '/confidentialite'];
 const DAY = 24 * 60 * 60_000;
 
-function cacheable(url: URL): boolean {
-  return PUBLIC_PAGES.includes(url.pathname) ||
-    /^\/evenements\/[a-z0-9-]+$/.test(url.pathname) ||
-    url.pathname === '/api/events' || /^\/api\/events\/[0-9a-f-]+\/counters$/.test(url.pathname);
-}
-
 async function remember(cache: Cache, request: Request, response: Response): Promise<void> {
-  if (!response.ok || response.headers.get('cache-control')?.includes('no-store')) return;
+  if (!shouldStorePublicResponse(request, response, self.location.origin, staticPaths)) return;
   const headers = new Headers(response.headers);
   headers.set('x-jemecompte-cached-at', String(Date.now()));
   headers.delete('content-length');
@@ -43,19 +40,16 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
-    for (const key of await caches.keys()) {
-      if (key.startsWith(PREFIX) && key !== CACHE) await caches.delete(key);
-    }
+    await purgeObsoletePublicCaches(caches, CACHE);
     await self.clients.claim();
   })());
 });
 
 self.addEventListener('fetch', (event) => {
   const request = event.request;
+  if (!shouldHandlePublicRequest(request, self.location.origin, staticPaths)) return;
   const url = new URL(request.url);
-  if (request.method !== 'GET' || url.origin !== self.location.origin || url.search) return;
-  if (!staticPaths.has(url.pathname) && !cacheable(url)) return;
-  // In particular: SSE, POSTs, individual status and metrics never enter CacheStorage.
+  // In particular: /gui, legacy /admin, action queries, SSE, POSTs, status and metrics never use CacheStorage.
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
     if (staticPaths.has(url.pathname)) return await cache.match(request) ?? fetch(request);

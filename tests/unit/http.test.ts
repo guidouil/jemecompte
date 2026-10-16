@@ -3,6 +3,7 @@ import type { RequestEvent } from '@sveltejs/kit';
 import { z } from 'zod';
 import { readPrivateJson, RequestFailure, writeRequest } from '../../src/lib/server/http';
 import { withReadBudget } from '../../src/lib/server/abuse';
+import { operationalMetrics } from '../../src/lib/server/observability';
 
 function eventFor(request: Request): RequestEvent {
   return { request, url: new URL(request.url) } as RequestEvent;
@@ -51,9 +52,55 @@ describe('bounded HTTP handling', () => {
     }
   });
   it('does not serialize raw infrastructure errors', async () => {
+    const before = operationalMetrics();
     const response = await writeRequest(async () => { throw new Error('PRIVATE_SENTINEL coordinates and SQL values'); });
     expect(response.status).toBe(503);
     expect(await response.text()).not.toContain('PRIVATE_SENTINEL');
+    const after = operationalMetrics();
+    expect(after.unavailable - before.unavailable).toBe(1);
+    expect(after.server_error - before.server_error).toBe(1);
+    expect(after.unavailabilityReasons.write_failure - before.unavailabilityReasons.write_failure).toBe(1);
+    expect(after.httpResponses.write['503'] - before.httpResponses.write['503']).toBe(1);
+    expect(JSON.stringify(after)).not.toContain('PRIVATE_SENTINEL');
+  });
+  it('records capacity refusal once without running the rejected work and releases all write slots', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const before = operationalMetrics();
+    const pending = Array.from({ length: 128 }, () => writeRequest(async () => {
+      await gate;
+      return new Response(null, { status: 204 });
+    }));
+    try {
+      const rejectedWork = vi.fn(async () => new Response(null));
+      const response = await writeRequest(rejectedWork);
+      expect(response.status).toBe(503);
+      expect(response.headers.get('retry-after')).toBe('2');
+      expect(rejectedWork).not.toHaveBeenCalled();
+      const metrics = operationalMetrics();
+      expect(metrics.unavailable - before.unavailable).toBe(1);
+      expect(metrics.server_error).toBe(before.server_error);
+      expect(metrics.unavailabilityReasons.write_capacity - before.unavailabilityReasons.write_capacity).toBe(1);
+      expect(metrics.httpResponses.write['503'] - before.httpResponses.write['503']).toBe(1);
+    } finally {
+      release();
+      await Promise.all(pending);
+    }
+    expect((await writeRequest(async () => new Response(null))).status).toBe(200);
+    expect(operationalMetrics().httpResponses.write['2xx'] - before.httpResponses.write['2xx']).toBe(129);
+  });
+  it('records expected HTTP failures separately from infrastructure errors', async () => {
+    const before = operationalMetrics();
+    expect((await writeRequest(async () => { throw new RequestFailure(new Response(null, { status: 400 })); })).status).toBe(400);
+    expect((await writeRequest(async () => new Response(null, { status: 429 }))).status).toBe(429);
+    expect((await writeRequest(async () => new Response(null, { status: 503 }))).status).toBe(503);
+    const after = operationalMetrics();
+    expect(after.httpResponses.write['4xx'] - before.httpResponses.write['4xx']).toBe(1);
+    expect(after.httpResponses.write['429'] - before.httpResponses.write['429']).toBe(1);
+    expect(after.httpResponses.write['503'] - before.httpResponses.write['503']).toBe(1);
+    expect(after.unavailabilityReasons.other - before.unavailabilityReasons.other).toBe(1);
+    expect(after.unavailable - before.unavailable).toBe(1);
+    expect(after.server_error).toBe(before.server_error);
   });
   it('checks the runtime canonical origin rather than an inferred proxy protocol', async () => {
     const request = privateRequest(JSON.stringify({ ok: true }));

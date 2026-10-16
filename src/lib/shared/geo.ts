@@ -1,4 +1,5 @@
 import type { Polygon } from 'geojson';
+import type { EventGeofence } from './types';
 
 /** WGS84 coordinates, always longitude before latitude. No location is collected or retained here. */
 export type GeoPoint = [number, number];
@@ -70,23 +71,27 @@ export function circlePolygon(center: GeoPoint, radiusMeters: number): Polygon {
 }
 
 /** Bounding-box midpoint for already validated local event polygons; not a participant position. */
-export function geofenceCenter(polygon: Polygon): GeoPoint {
-  if (!polygon || polygon.type !== 'Polygon' || !Array.isArray(polygon.coordinates) || !polygon.coordinates.length) {
+export function geofenceCenter(polygon: EventGeofence): GeoPoint {
+  if (!polygon || !['Polygon', 'MultiPolygon'].includes(polygon.type) || !Array.isArray(polygon.coordinates) || !polygon.coordinates.length) {
     throw new RangeError('Le périmètre géographique est invalide.');
   }
   let west = Infinity;
   let east = -Infinity;
   let south = Infinity;
   let north = -Infinity;
-  for (const ring of polygon.coordinates) {
-    if (!Array.isArray(ring) || !ring.length) throw new RangeError('Le périmètre géographique est invalide.');
-    for (const position of ring) {
-      assertPoint(position as GeoPoint);
-      const [longitude, latitude] = position as GeoPoint;
-      west = Math.min(west, longitude);
-      east = Math.max(east, longitude);
-      south = Math.min(south, latitude);
-      north = Math.max(north, latitude);
+  const polygons = polygon.type === 'Polygon' ? [polygon.coordinates] : polygon.coordinates;
+  for (const coordinates of polygons) {
+    if (!Array.isArray(coordinates) || !coordinates.length) throw new RangeError('Le périmètre géographique est invalide.');
+    for (const ring of coordinates) {
+      if (!Array.isArray(ring) || !ring.length) throw new RangeError('Le périmètre géographique est invalide.');
+      for (const position of ring) {
+        assertPoint(position as GeoPoint);
+        const [longitude, latitude] = position as GeoPoint;
+        west = Math.min(west, longitude);
+        east = Math.max(east, longitude);
+        south = Math.min(south, latitude);
+        north = Math.max(north, latitude);
+      }
     }
   }
   if (east - west > 180) {

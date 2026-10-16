@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { test, expect, type Page } from '@playwright/test';
 import { Pool } from 'pg';
 import { distanceMeters, type GeoPoint } from '../../src/lib/shared/geo';
+import { EVENT_CREATION_DRAFT_KEY, EVENT_CREATION_DRAFT_TTL_MS } from '../../src/lib/client/event-creation-draft';
 
 const testUrl = process.env.TEST_DATABASE_URL;
 if (!testUrl || !new URL(testUrl).pathname.endsWith('_test')) {
@@ -303,14 +304,97 @@ test('retries a creation response lost after commit using the same requestId and
   const firstVertex = stored.rows[0]!.geofence.coordinates[0][0]!;
   expect(distanceMeters(bodies[0]!.publicCenter, firstVertex)).toBeCloseTo(10_000, 2);
   expect(await presenceCount(id)).toBe(0);
+  expect(await geoCalls(page)).toBe(0);
+  const savedDraft = await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!), EVENT_CREATION_DRAFT_KEY);
+  expect(savedDraft).toMatchObject({ version: 1, payload: bodies[0] });
+  expect(Object.keys(savedDraft).sort()).toEqual(['payload', 'savedAt', 'version']);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Reprendre la même demande', exact: true })).toBeVisible();
+  await expect(page.getByText(/aucun nouvel envoi n’est automatique/)).toBeVisible();
+  await expect(reviewField(page, 'Rassemblement')).toContainText(bodies[0]!.name);
+  await expect(reviewField(page, 'Durée')).toContainText('72 heures');
+  await expect(page.getByRole('button', { name: /Modifier le comptage/ })).toBeDisabled();
+  expect(bodies).toHaveLength(1);
+  expect(await geoCalls(page)).toBe(0);
   const retryResponse = page.waitForResponse((response) => response.url().endsWith('/api/events/create'));
-  await page.getByRole('button', { name: /^Réessayer la création/ }).click();
+  await page.getByRole('button', { name: /^Reprendre la même demande/ }).click();
   expect((await retryResponse).status()).toBe(200);
   await expect(page).toHaveURL(/\/evenements\//);
   expect(bodies).toHaveLength(2);
   expect(bodies[1]).toEqual(bodies[0]);
   expect((await pool.query('SELECT 1 FROM events WHERE id=$1', [id])).rowCount).toBe(1);
   expect(await presenceCount(id)).toBe(0);
+  expect(await geoCalls(page)).toBe(0);
+  expect(await page.evaluate((key) => sessionStorage.getItem(key), EVENT_CREATION_DRAFT_KEY)).toBeNull();
+});
+
+test('preserves a recovered request across retryable and mode-change rejections until an explicit abandonment', async ({ page }) => {
+  await observeGeolocation(page);
+  await mockPublicMapProviders(page);
+  const payload: CreationBody = { requestId: randomUUID(), name: 'Demande fictive conservée', cityCode: '75056',
+    cityName: 'Paris', publicCenter: [...publicCenter], radiusMeters: 500, durationMinutes: 240, publicLocationConfirmed: true };
+  await page.addInitScript(({ key, request }) => sessionStorage.setItem(key, JSON.stringify({ version: 1, savedAt: Date.now(), payload: request })),
+    { key: EVENT_CREATION_DRAFT_KEY, request: payload });
+  const rejections = [{ status: 429, body: 'rate_limited' }, { status: 503, body: 'temporarily_unavailable' },
+    { status: 409, body: 'event_mode_changed' }];
+  const requests: CreationBody[] = [];
+  await page.route('**/api/events/create', async (route) => {
+    requests.push(route.request().postDataJSON() as CreationBody);
+    const rejection = rejections[requests.length - 1]!;
+    await route.fulfill({ status: rejection.status, json: { status: rejection.body } });
+  });
+  await page.goto('/creer');
+  await expect(page.getByRole('heading', { name: 'Reprendre la même demande', exact: true })).toBeVisible();
+  expect(requests).toHaveLength(0);
+  for (const _rejection of rejections) {
+    await page.getByRole('button', { name: /^Reprendre la même demande/ }).click();
+    await expect(page.getByRole('button', { name: /^Reprendre la même demande/ })).toBeEnabled();
+    expect(await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!).payload, EVENT_CREATION_DRAFT_KEY)).toEqual(payload);
+  }
+  expect(requests).toEqual([payload, payload, payload]);
+  await expect(page.getByText('Le mode de collecte a changé depuis cette demande. Elle reste distincte des comptages actuels. Vérifiez le catalogue avant de recommencer.')).toBeVisible();
+  await page.getByRole('button', { name: 'Abandonner cette demande', exact: true }).click();
+  await expect(page.getByText(/Abandonner retire seulement la reprise de cet onglet/)).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Reprendre la même demande/ })).toBeDisabled();
+  await page.getByRole('button', { name: 'Conserver ma demande', exact: true }).click();
+  expect(await page.evaluate((key) => sessionStorage.getItem(key), EVENT_CREATION_DRAFT_KEY)).not.toBeNull();
+  await page.getByRole('button', { name: 'Abandonner cette demande', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirmer l’abandon', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Choisissez un lieu public', exact: true })).toBeVisible();
+  expect(await page.evaluate((key) => sessionStorage.getItem(key), EVENT_CREATION_DRAFT_KEY)).toBeNull();
+  expect(await geoCalls(page)).toBe(0);
+  expect((await pool.query('SELECT 1 FROM events WHERE id=$1', [payload.requestId])).rowCount).toBe(0);
+});
+
+test('warns before a fresh form when a saved creation request has expired', async ({ page }) => {
+  await page.addInitScript(({ key, ttl }) => sessionStorage.setItem(key, JSON.stringify({ version: 1,
+    savedAt: Date.now() - ttl, payload: { requestId: '5a52252e-28ae-49f6-ab20-98805d61d094' } })),
+  { key: EVENT_CREATION_DRAFT_KEY, ttl: EVENT_CREATION_DRAFT_TTL_MS });
+  let creations = 0;
+  page.on('request', (request) => { if (request.url().endsWith('/api/events/create')) creations += 1; });
+  await page.goto('/creer');
+  await expect(page.getByText(/Une ancienne demande de création a expiré après 24 heures/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Choisissez un lieu public', exact: true })).toBeVisible();
+  expect(await page.evaluate((key) => sessionStorage.getItem(key), EVENT_CREATION_DRAFT_KEY)).toBeNull();
+  expect(creations).toBe(0);
+});
+
+test('keeps memory retries available and warns when session storage is blocked', async ({ page }) => {
+  await observeGeolocation(page);
+  await mockPublicMapProviders(page);
+  await page.addInitScript(() => Object.defineProperty(window, 'sessionStorage', { get: () => { throw new Error('Storage blocked'); } }));
+  const requests: CreationBody[] = [];
+  await page.route('**/api/events/create', async (route) => {
+    requests.push(route.request().postDataJSON() as CreationBody);
+    await route.fulfill({ status: 503, json: { status: 'temporarily_unavailable' } });
+  });
+  await prepareCreation(page, `Mémoire fictive ${randomUUID().slice(0, 8)}`);
+  await page.getByRole('button', { name: /^Créer le comptage/ }).click();
+  await expect(page.getByText(/La demande reste seulement dans cette page/)).toBeVisible();
+  await page.getByRole('button', { name: /^Réessayer la création/ }).click();
+  await expect(page.getByRole('button', { name: /^Réessayer la création/ })).toBeEnabled();
+  expect(requests).toHaveLength(2);
+  expect(requests[1]).toEqual(requests[0]);
   expect(await geoCalls(page)).toBe(0);
 });
 

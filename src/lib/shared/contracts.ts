@@ -7,7 +7,8 @@ export const participationPayloadSchema = z.object({
   anonymousEventId: anonymousEventIdSchema,
   geofenceVersion: z.number().int().positive().max(2_147_483_647),
   protocolVersion: z.literal(1),
-  insideZone: z.literal(true)
+  insideZone: z.literal(true),
+  countingScope: z.enum(['gathering', 'city']).optional()
 }).strict();
 export const presenceStatusPayloadSchema = z.object({
   anonymousEventId: anonymousEventIdSchema
@@ -16,6 +17,7 @@ export const presenceStatusPayloadSchema = z.object({
 const decimal = z.string().regex(/^(0|[1-9]\d{0,30})$/);
 export const counterSnapshotSchema = z.object({
   eventId: eventIdSchema,
+  countingScope: z.enum(['gathering', 'city']).optional(),
   total: decimal,
   revision: decimal,
   day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),

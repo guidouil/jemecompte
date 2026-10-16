@@ -12,14 +12,16 @@ const configurationSchema = z.object({
   cityCode: z.string().trim().min(1).max(20),
   cityName: z.string().trim().min(1).max(120),
   description: z.string().max(2000).nullable().optional(),
-  geofence: z.unknown().transform((value, context) => {
-    try { return validateGeofence(value); }
-    catch { context.addIssue({ code: 'custom', message: 'Invalid public Polygon.' }); return z.NEVER; }
-  }),
+  geofence: z.unknown(),
+  countingScope: z.enum(['gathering', 'city']).default('gathering'),
   startsAt: z.string().datetime({ offset: true }),
   endsAt: z.string().datetime({ offset: true }),
   isTest: z.boolean()
-}).strict().refine((value) => Date.parse(value.startsAt) < Date.parse(value.endsAt), { message: 'startsAt must precede endsAt.' });
+}).strict().refine((value) => Date.parse(value.startsAt) < Date.parse(value.endsAt), { message: 'startsAt must precede endsAt.' })
+  .transform((value, context) => {
+    try { return { ...value, geofence: validateGeofence(value.geofence, value.countingScope) }; }
+    catch { context.addIssue({ code: 'custom', path: ['geofence'], message: 'Invalid public geofence for its counting scope.' }); return z.NEVER; }
+  });
 
 export function validateEventConfiguration(value: unknown) { return configurationSchema.parse(value); }
 
@@ -48,14 +50,14 @@ export async function importEventConfiguration(value: unknown, actor: AdminActor
     if (existing.rows[0]) {
       await client.query(`UPDATE events SET slug=$2, name=$3, city_code=$4, city_name=$5, description=$6,
         geofence=$7::jsonb, starts_at=$8, ends_at=$9, is_test=$10,
-        geofence_version=geofence_version+1, metadata_version=metadata_version+1, updated_at=clock_timestamp()
+        counting_scope=$11, geofence_version=geofence_version+1, metadata_version=metadata_version+1, updated_at=clock_timestamp()
         WHERE id=$1`, [id, config.slug, config.name, config.cityCode, config.cityName, config.description ?? null,
-        JSON.stringify(config.geofence), config.startsAt, config.endsAt, config.isTest]);
+        JSON.stringify(config.geofence), config.startsAt, config.endsAt, config.isTest, config.countingScope]);
     } else {
       await client.query(`INSERT INTO events
-        (id,slug,name,city_code,city_name,description,geofence,starts_at,ends_at,is_test)
-        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10)`, [id, config.slug, config.name, config.cityCode,
-        config.cityName, config.description ?? null, JSON.stringify(config.geofence), config.startsAt, config.endsAt, config.isTest]);
+        (id,slug,name,city_code,city_name,description,geofence,starts_at,ends_at,is_test,counting_scope)
+        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11)`, [id, config.slug, config.name, config.cityCode,
+        config.cityName, config.description ?? null, JSON.stringify(config.geofence), config.startsAt, config.endsAt, config.isTest, config.countingScope]);
     }
     await audit(client, actor, id, 'import_draft', { ...config, id });
   });

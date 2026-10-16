@@ -69,11 +69,11 @@
 
 <section id="rassemblements" class="discovery" aria-labelledby={`${uid}-heading`}>
   <div class="discovery-heading">
-    <div><p class="eyebrow">TROUVER VOTRE RASSEMBLEMENT</p><h2 id={`${uid}-heading`}>Où est-ce que ça compte ?</h2></div>
+    <div><p class="eyebrow">TROUVER UN COMPTAGE</p><h2 id={`${uid}-heading`}>Où est-ce que ça compte ?</h2></div>
     <a href="/creer" class="create-link">Créer un rassemblement <span aria-hidden="true">↗</span></a>
   </div>
 
-  <div class="search-controls" role="search" aria-label="Rechercher un rassemblement">
+  <div class="search-controls" role="search" aria-label="Rechercher un comptage">
     <div class="search-field"><label for={`${uid}-query`}>Nom ou ville</label><input id={`${uid}-query`} type="search" bind:value={query} placeholder="Paris, République…" autocomplete="off" spellcheck="false" disabled={!serviceAvailable} /></div>
     <div class="period-field"><label for={`${uid}-period`}>Quand ?</label><select id={`${uid}-period`} bind:value={period} disabled={!serviceAvailable}><option value="all">Tous pertinents</option><option value="current">En cours</option><option value="upcoming">À venir</option></select></div>
   </div>
@@ -89,18 +89,18 @@
 
   {#if position}<p class="discovery-help distance-help">Les distances sont calculées à vol d’oiseau depuis le centre approximatif du périmètre. Elles ne prouvent pas votre présence sur place.</p>{/if}
 
-  <div class="results-heading"><p role="status" aria-live="polite">{serviceAvailable ? `${results.length} rassemblement${results.length > 1 ? 's' : ''} trouvé${results.length > 1 ? 's' : ''}` : 'Catalogue indisponible'}</p><button type="button" class="text-button" onclick={reset}>Réinitialiser les filtres</button></div>
+  <div class="results-heading"><p role="status" aria-live="polite">{serviceAvailable ? `${results.length} comptage${results.length > 1 ? 's' : ''} trouvé${results.length > 1 ? 's' : ''}` : 'Catalogue indisponible'}</p><button type="button" class="text-button" onclick={reset}>Réinitialiser les filtres</button></div>
 
   {#if !serviceAvailable}
     <div class="empty-result"><h3>Le catalogue ne peut pas être chargé.</h3><p>Réessayez dans quelques instants avant de créer un rassemblement, pour pouvoir vérifier qu’il n’existe pas déjà.</p></div>
   {:else if !results.length}
-    <div class="empty-result"><h3>Aucun rassemblement ne correspond à ces filtres.</h3><p>Essayez un autre nom, une autre ville ou un rayon plus grand. Les événements terminés ou annulés sont masqués.</p><a href="/creer" class="secondary-button">Créer un rassemblement <span aria-hidden="true">↗</span></a><p>Vérifiez d’abord les autres filtres pour éviter de créer un doublon.</p></div>
+    <div class="empty-result"><h3>Aucun comptage ne correspond à ces filtres.</h3><p>Essayez un autre nom, une autre ville ou un rayon plus grand. Les comptages terminés ou annulés sont masqués.</p><a href="/creer" class="secondary-button">Créer un rassemblement <span aria-hidden="true">↗</span></a><p>Vérifiez d’abord les autres filtres pour éviter de créer un doublon.</p></div>
   {:else}
     <ul class="discovery-results">
       {#each results as result (result.event.id)}
         <li><a href={`/evenements/${result.event.slug}`} class="discovery-result">
           <div class="result-city"><strong>{result.event.cityName}</strong>{#if result.distance !== null}<span>{approximateDistance(result.distance)}</span>{/if}</div>
-          <div class="result-main"><h3>{result.event.name}</h3><p>{result.event.status === 'paused' || result.event.integrityStatus === 'suspended' ? 'En pause' : result.period === 'current' ? 'En cours' : 'À venir'} <span aria-hidden="true">·</span> {dateFormat.format(new Date(result.event.startsAt))} <span class="paris-time">(Paris)</span></p><div class="result-labels"><span>RASSEMBLEMENT</span>{#if result.event.creationSource === 'community'}<span>Ouvert par un participant</span>{/if}</div></div>
+          <div class="result-main"><h3>{result.event.name}</h3><p>{result.event.status === 'paused' || result.event.integrityStatus === 'suspended' ? 'En pause' : result.period === 'current' ? result.event.countingScope === 'city' ? 'Comptage ouvert' : 'En cours' : 'À venir'} <span aria-hidden="true">·</span> {#if result.event.countingScope === 'city'}Fenêtre : {/if}{dateFormat.format(new Date(result.event.startsAt))}{#if result.event.countingScope === 'city'} au {dateFormat.format(new Date(result.event.endsAt))}{/if} <span class="paris-time">(Paris)</span></p><div class="result-labels"><span>{result.event.countingScope === 'city' ? 'COMMUNE ENTIÈRE' : 'RASSEMBLEMENT'}</span>{#if result.event.creationSource === 'community'}<span>Ouvert par un participant</span>{/if}</div>{#if result.event.countingScope === 'city'}<p>Zone de déclaration dans toute la commune. Aucun lieu de manifestation confirmé.</p>{/if}</div>
           <span class="result-arrow" aria-hidden="true">↗</span>
         </a></li>
       {/each}

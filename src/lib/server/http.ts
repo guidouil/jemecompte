@@ -2,7 +2,7 @@ import { json, type RequestEvent } from '@sveltejs/kit';
 import { z } from 'zod';
 import { eventIdSchema } from '#lib/shared/contracts';
 import { acquireWriteSlot, limiter } from './abuse';
-import { record } from './observability';
+import { record, recordHttpResponse, type UnavailableReason } from './observability';
 
 const privateHeaders = { 'cache-control': 'no-store', 'content-type': 'application/json' };
 
@@ -92,12 +92,23 @@ export function guardIdentity(eventId: string, anonymousEventId: string): void {
 
 export async function writeRequest(work: () => Promise<Response>): Promise<Response> {
   const release = acquireWriteSlot();
-  if (!release) return privateJson({ status: 'temporarily_unavailable', retryAfter: 2 }, 503, 2);
-  try { return await work(); }
-  catch (failure) {
-    if (failure instanceof RequestFailure) return failure.response;
-    record('server_error');
-    // Deliberately no automatic exception serialization: SQL errors can contain parameters.
-    return privateJson({ status: 'temporarily_unavailable', retryAfter: 3 }, 503, 3);
-  } finally { release(); }
+  let response: Response;
+  let reason: UnavailableReason | undefined;
+  if (!release) {
+    reason = 'write_capacity';
+    response = privateJson({ status: 'temporarily_unavailable', retryAfter: 2 }, 503, 2);
+  } else {
+    try { response = await work(); }
+    catch (failure) {
+      if (failure instanceof RequestFailure) response = failure.response;
+      else {
+        record('server_error');
+        reason = 'write_failure';
+        // Deliberately no automatic exception serialization: SQL errors can contain parameters.
+        response = privateJson({ status: 'temporarily_unavailable', retryAfter: 3 }, 503, 3);
+      }
+    } finally { release(); }
+  }
+  recordHttpResponse('write', response.status, reason);
+  return response;
 }

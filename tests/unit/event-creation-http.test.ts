@@ -18,6 +18,7 @@ function request(payload: unknown, origin = 'http://localhost'): Parameters<type
 
 beforeEach(() => {
   vi.stubEnv('ORIGIN', 'http://localhost');
+  vi.stubEnv('REAL_EVENTS_APPROVED', 'false');
   vi.clearAllMocks();
   mocked.allow.mockReturnValue({ allowed: true, retryAfter: 3600 });
   mocked.create.mockResolvedValue({ status: 'created', event: { id: body.requestId, slug: 'fictif', isTest: true } });
@@ -46,10 +47,18 @@ describe('public creation endpoint', () => {
     expect(mocked.create).not.toHaveBeenCalled();
   });
   it('distinguishes an idempotent replay from a conflicting public request', async () => {
-    mocked.create.mockResolvedValueOnce({ status: 'already_created', event: { id: body.requestId, slug: 'fictif' } });
+    mocked.create.mockResolvedValueOnce({ status: 'already_created', event: { id: body.requestId, slug: 'fictif', isTest: true } });
     expect((await POST(request(body))).status).toBe(200);
     mocked.create.mockResolvedValueOnce({ status: 'request_conflict' });
     expect((await POST(request(body))).status).toBe(409);
+  });
+  it.each(['false', 'true'])('does not return an old creation belonging to the other public mode (%s)', async (approval) => {
+    vi.stubEnv('REAL_EVENTS_APPROVED', approval);
+    mocked.create.mockResolvedValueOnce({ status: 'already_created', event: { id: body.requestId, slug: 'hidden', isTest: approval === 'true' } });
+    const response = await POST(request(body));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ status: 'event_mode_changed' });
+    expect(mocked.create).toHaveBeenCalledExactlyOnceWith(body);
   });
   it('normalizes an explicit zoned start before calling the service', async () => {
     const response = await POST(request({ ...body, startsAt: '2030-07-15T15:30:00+02:00' }));

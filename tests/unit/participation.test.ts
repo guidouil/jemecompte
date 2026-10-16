@@ -120,6 +120,72 @@ describe('participation flow', () => {
     expect(states.at(-1)?.phase).toBe('counted');
   });
 
+  it('requires explicit confirmation for a single whole-city match before identity creation or submission', async () => {
+    const city = event({ countingScope: 'city' });
+    fetchMock.mockResolvedValue(reply({ status: 'counted', snapshot: snapshot({ countingScope: 'city' }) }));
+    const { flow, states } = setup([city]);
+    await flow.count();
+    expect(states.at(-1)).toMatchObject({ phase: 'choosing', choices: [city] });
+    expect(getEventIdentity).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    await flow.select(city.id);
+    expect(locateEvents).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({
+      anonymousEventId: identity, geofenceVersion: 1, protocolVersion: 1, insideZone: true, countingScope: 'city'
+    });
+    expect(states.at(-1)?.phase).toBe('counted');
+  });
+
+  it('uses the explicit city page choice directly while preserving the one-click gathering default', async () => {
+    fetchMock.mockResolvedValue(reply({ status: 'counted', snapshot: snapshot({ countingScope: 'city' }) }));
+    const city = setup([event({ countingScope: 'city' })]);
+    await city.flow.count(eventId);
+    expect(city.states.some((state) => state.phase === 'choosing')).toBe(false);
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body).countingScope).toBe('city');
+    fetchMock.mockClear().mockResolvedValue(reply({ status: 'counted', snapshot: snapshot() }));
+    const gathering = setup();
+    await gathering.flow.count();
+    expect(gathering.states.some((state) => state.phase === 'choosing')).toBe(false);
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).not.toHaveProperty('countingScope');
+  });
+
+  it('keeps a mixed city and gathering choice separate and submits only the chosen scope', async () => {
+    const city = event({ id: '3e3f5fe8-fb22-4e7b-8c24-ef448fb57ee8', countingScope: 'city' });
+    fetchMock.mockResolvedValue(reply({ status: 'counted', snapshot: snapshot() }));
+    const { flow, states } = setup([city, event()]);
+    await flow.count();
+    expect(states.at(-1)?.choices).toHaveLength(2);
+    expect(fetchMock).not.toHaveBeenCalled();
+    await flow.select(eventId);
+    expect(fetchMock.mock.calls[0]![0]).toBe(`/api/events/${eventId}/presences`);
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).not.toHaveProperty('countingScope');
+  });
+
+  it('retakes an expired city fix only after the explicit choice and never adds a second confirmation loop', async () => {
+    const city = event({ countingScope: 'city' });
+    fetchMock.mockResolvedValue(reply({ status: 'counted', snapshot: snapshot({ countingScope: 'city' }) }));
+    const { flow, states } = setup([city]);
+    await flow.count();
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(fetchMock).not.toHaveBeenCalled();
+    await flow.select(city.id);
+    expect(locateEvents).toHaveBeenCalledTimes(2);
+    expect(locateEvents).toHaveBeenLastCalledWith([city], city.id);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(states.at(-1)?.phase).toBe('counted');
+  });
+
+  it('stops automatic retries when the server requires an explicit scope confirmation', async () => {
+    fetchMock.mockResolvedValue(reply({ status: 'scope_confirmation_required' }, 409));
+    const { flow, states } = setup([event({ countingScope: 'city' })]);
+    await flow.count(eventId);
+    expect(states.at(-1)).toMatchObject({ phase: 'error', code: 'scope_confirmation_required' });
+    expect(states.at(-1)?.message).toContain('Rechargez la page');
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('retries a lost response with exactly the same event identity and no optimistic credit', async () => {
     fetchMock.mockRejectedValueOnce(new TypeError('network'))
       .mockResolvedValueOnce(reply({ status: 'already_counted', snapshot: snapshot() }));

@@ -1,5 +1,6 @@
 import type { CounterSnapshot } from '../shared/types';
 import { getCounterSnapshot } from './counters';
+import { realEventsApproved } from './db';
 
 interface Subscriber {
   controller: ReadableStreamDefaultController<Uint8Array>;
@@ -7,10 +8,12 @@ interface Subscriber {
 }
 interface Channel {
   id: string;
+  isTest: boolean;
   snapshot: CounterSnapshot | null;
   subscribers: Set<Subscriber>;
   pending: Promise<CounterSnapshot | null> | null;
   touchedAt: number;
+  closed?: boolean;
 }
 const channels = new Map<string, Channel>();
 const encoder = new TextEncoder();
@@ -46,9 +49,11 @@ function enqueue(subscriber: Subscriber, message: Uint8Array): void {
 
 async function refresh(channel: Channel): Promise<CounterSnapshot | null> {
   if (channel.pending) return channel.pending;
-  channel.pending = getCounterSnapshot(channel.id);
+  channel.pending = getCounterSnapshot(channel.id, channel.isTest);
   try {
-    channel.snapshot = await channel.pending;
+    const snapshot = await channel.pending;
+    // A pre-deletion read must not resurrect a closed channel.
+    channel.snapshot = channel.closed ? null : snapshot;
     channel.touchedAt = Date.now();
     return channel.snapshot;
   } finally { channel.pending = null; }
@@ -58,9 +63,9 @@ async function tick(): Promise<void> {
   if (ticking) return;
   ticking = true;
   try {
-    await Promise.all([...channels.values()].map(async (channel) => {
+    await Promise.all([...channels.entries()].map(async ([key, channel]) => {
       if (channel.subscribers.size === 0) {
-        if (Date.now() - channel.touchedAt > 30_000) channels.delete(channel.id);
+        if (Date.now() - channel.touchedAt > 30_000) channels.delete(key);
         return;
       }
       try {
@@ -84,19 +89,21 @@ async function tick(): Promise<void> {
 
 export async function counterStream(eventId: string, signal: AbortSignal): Promise<Response | null> {
   if (clientCount() >= MAX_CLIENTS) throw new StreamUnavailable();
-  let channel = channels.get(eventId);
+  const isTest = !realEventsApproved();
+  const key = `${isTest}:${eventId}`;
+  let channel = channels.get(key);
   if (!channel) {
     for (const [id, candidate] of channels) {
       if (!candidate.subscribers.size && !candidate.pending) channels.delete(id);
       if (channels.size < MAX_CHANNELS) break;
     }
     if (channels.size >= MAX_CHANNELS) throw new StreamUnavailable();
-    channel = { id: eventId, snapshot: null, subscribers: new Set(), pending: null, touchedAt: 0 };
-    channels.set(eventId, channel);
+    channel = { id: eventId, isTest, snapshot: null, subscribers: new Set(), pending: null, touchedAt: 0 };
+    channels.set(key, channel);
   }
   if (!channel.snapshot || Date.now() - channel.touchedAt > 3_000) await refresh(channel);
-  if (!channel.snapshot) {
-    if (!channel.subscribers.size) channels.delete(eventId);
+  if (channel.closed || !channel.snapshot) {
+    if (!channel.subscribers.size) channels.delete(key);
     return null;
   }
   // Pending initial DB reads can resolve together; recheck before admitting each client.
@@ -138,4 +145,15 @@ export async function counterStream(eventId: string, signal: AbortSignal): Promi
 
 export function realtimeMetrics() {
   return { connections: clientCount(), channels: channels.size };
+}
+
+export function closeEventStreams(eventId: string): void {
+  for (const [key, channel] of channels) {
+    if (channel.id !== eventId) continue;
+    channel.closed = true;
+    channel.snapshot = null;
+    for (const subscriber of [...channel.subscribers]) subscriber.close();
+    channels.delete(key);
+  }
+  stopIfIdle();
 }

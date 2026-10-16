@@ -3,11 +3,12 @@ import { decodeAnonymousEventId, getPool, isEventId, realEventsApproved, transac
 import { getCounterSnapshot, readCounterSnapshot } from './counters';
 import type { EventRow } from './events';
 
-export async function registerPresence(eventId: string, payload: ParticipationPayload): Promise<ParticipationReply> {
+export async function registerPresence(eventId: string, payload: ParticipationPayload, isTest?: boolean): Promise<ParticipationReply> {
   const anonymousId = decodeAnonymousEventId(payload?.anonymousEventId);
   if (!isEventId(eventId) || !anonymousId || payload.protocolVersion !== 1 || payload.insideZone !== true ||
       !Number.isInteger(payload.geofenceVersion) || payload.geofenceVersion < 1 ||
-      Object.keys(payload).some((key) => !['anonymousEventId', 'geofenceVersion', 'protocolVersion', 'insideZone'].includes(key))) {
+      (payload.countingScope !== undefined && payload.countingScope !== 'gathering' && payload.countingScope !== 'city') ||
+      Object.keys(payload).some((key) => !['anonymousEventId', 'geofenceVersion', 'protocolVersion', 'insideZone', 'countingScope'].includes(key))) {
     return { status: 'invalid_request' };
   }
 
@@ -15,7 +16,13 @@ export async function registerPresence(eventId: string, payload: ParticipationPa
     const { rows } = await client.query<EventRow>(
       "SELECT * FROM events WHERE id = $1 AND status <> 'draft' FOR SHARE", [eventId]);
     const event = rows[0];
-    if (!event) return 'not_found';
+    if (!event || (isTest !== undefined && event.is_test !== isTest)) return 'not_found';
+
+    // Older cached clients describe every zone as a gathering. They must not silently
+    // admit a full-commune declaration without the new explicit scope choice.
+    const scope = event.counting_scope ?? 'gathering';
+    if (scope === 'city' && payload.countingScope !== 'city') return 'scope_confirmation_required';
+    if (scope === 'gathering' && payload.countingScope === 'city') return 'invalid_request';
 
     const existing = await client.query('SELECT 1 FROM presences WHERE event_id = $1 AND anonymous_event_id = $2', [eventId, anonymousId]);
     if (existing.rowCount) return 'already_counted';
@@ -50,10 +57,10 @@ export async function registerPresence(eventId: string, payload: ParticipationPa
   return snapshot ? { status, snapshot } : { status: 'not_found' };
 }
 
-export async function getPresenceStatus(eventId: string, anonymousEventId: string): Promise<PresenceStatusReply | null> {
+export async function getPresenceStatus(eventId: string, anonymousEventId: string, isTest?: boolean): Promise<PresenceStatusReply | null> {
   const anonymousId = decodeAnonymousEventId(anonymousEventId);
   if (!isEventId(eventId) || !anonymousId) return null;
-  const result = await readCounterSnapshot(getPool(), eventId, anonymousId);
+  const result = await readCounterSnapshot(getPool(), eventId, anonymousId, isTest);
   if (!result) return null;
   return {
     status: result.detailsExpired ? 'details_expired' : result.exists ? 'counted' : 'not_counted',

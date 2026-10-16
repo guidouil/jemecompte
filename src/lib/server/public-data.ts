@@ -1,11 +1,21 @@
-import type { CounterSnapshot, PublicEvent } from '../shared/types';
+import type { CountingScope, CounterSnapshot, PublicEvent } from '../shared/types';
 import { getCounterSnapshot, getNationalTotal } from './counters';
 import { listPublicEvents } from './events';
+import { realEventsApproved } from './db';
 
 interface Entry<T> { value?: T; expiresAt: number; pending?: Promise<T>; generation?: number }
-const catalogue: Entry<PublicEvent[]> = { expiresAt: 0 };
-const national: Entry<string> = { expiresAt: 0 };
+const catalogues = new Map<boolean, Entry<PublicEvent[]>>();
+const nationals = new Map<string, Entry<string>>();
 const snapshots = new Map<string, Entry<CounterSnapshot | null>>();
+
+function modeEntry<K, T>(entries: Map<K, Entry<T>>, key: K): Entry<T> {
+  let entry = entries.get(key);
+  if (!entry) {
+    entry = { expiresAt: 0 };
+    entries.set(key, entry);
+  }
+  return entry;
+}
 
 async function cached<T>(entry: Entry<T>, ttl: number, read: () => Promise<T>): Promise<T> {
   if (entry.value !== undefined && entry.expiresAt > Date.now()) return entry.value;
@@ -24,20 +34,37 @@ async function cached<T>(entry: Entry<T>, ttl: number, read: () => Promise<T>): 
 }
 
 export function invalidatePublicCatalogue(): void {
-  catalogue.generation = (catalogue.generation ?? 0) + 1;
-  catalogue.value = undefined;
-  catalogue.pending = undefined;
-  catalogue.expiresAt = 0;
+  for (const catalogue of catalogues.values()) {
+    catalogue.generation = (catalogue.generation ?? 0) + 1;
+    catalogue.value = undefined;
+    catalogue.pending = undefined;
+    catalogue.expiresAt = 0;
+  }
+}
+
+/** Every snapshot embeds national/city totals, so a deletion invalidates all of them. */
+export function invalidatePublicEvent(_eventId: string): void {
+  invalidatePublicCatalogue();
+  for (const entry of [...nationals.values(), ...snapshots.values()]) {
+    entry.generation = (entry.generation ?? 0) + 1;
+    entry.value = undefined;
+    entry.pending = undefined;
+    entry.expiresAt = 0;
+  }
 }
 
 export function publicCatalogue(): Promise<PublicEvent[]> {
-  return cached(catalogue, 5_000, listPublicEvents);
+  const isTest = !realEventsApproved();
+  return cached(modeEntry(catalogues, isTest), 5_000, () => listPublicEvents(isTest));
 }
-export function publicNationalTotal(): Promise<string> {
-  return cached(national, 3_000, () => getNationalTotal(true));
+export function publicNationalTotal(countingScope: CountingScope = 'gathering'): Promise<string> {
+  const isTest = !realEventsApproved();
+  return cached(modeEntry(nationals, `${isTest}:${countingScope}`), 3_000, () => getNationalTotal(isTest, countingScope));
 }
 export function publicCounterSnapshot(eventId: string): Promise<CounterSnapshot | null> {
-  let entry = snapshots.get(eventId);
+  const isTest = !realEventsApproved();
+  const key = `${isTest}:${eventId}`;
+  let entry = snapshots.get(key);
   if (!entry) {
     for (const [id, item] of snapshots) {
       if (!item.pending && item.expiresAt <= Date.now()) snapshots.delete(id);
@@ -48,7 +75,7 @@ export function publicCounterSnapshot(eventId: string): Promise<CounterSnapshot 
       else return Promise.reject(new Error('Public snapshot capacity reached'));
     }
     entry = { expiresAt: 0 };
-    snapshots.set(eventId, entry);
+    snapshots.set(key, entry);
   }
-  return cached(entry, 3_000, () => getCounterSnapshot(eventId));
+  return cached(entry, 3_000, () => getCounterSnapshot(eventId, isTest));
 }

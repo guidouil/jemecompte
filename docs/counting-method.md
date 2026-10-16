@@ -1,10 +1,20 @@
 # Ce que compte JeMeCompte
 
-Le chiffre signifie **« personnes qui se sont comptées sur place avec ce service »**, dans les limites ci-dessous. Il ne constitue pas une estimation exhaustive de la foule, un décompte d'humains uniques ni une mesure des personnes encore présentes.
+Le chiffre décrit des **participations déclarées acceptées par le service**, dans les limites ci-dessous. Deux portées sont distinguées : un rassemblement localisé dans son périmètre public, ou une commune entière. Aucune de ces portées ne constitue une estimation exhaustive de la foule, un décompte d'humains uniques ni une mesure des personnes encore présentes.
 
-## Découvrir un rassemblement
+## Comptages de commune entière
 
-La recherche filtre localement le nom et la ville du catalogue chargé, sans accents. Les filtres « En cours », « À venir » et « Tous pertinents » excluent les événements terminés, fermés, annulés ou non publiés. Un événement en pause reste visible avec son état. Le catalogue fourni contient au maximum 500 événements, en privilégiant ceux en cours puis à venir : son absence de résultat ne prouve pas l'absence d'un rassemblement.
+Un comptage de ville couvre le contour administratif publié de la commune, y compris ses parties disjointes. Il ne désigne aucun lieu, parcours ou horaire de manifestation. Une personne située à son domicile dans la commune peut donc être admise : sa déclaration ne prouve pas une participation à une manifestation. Le compteur porte la mention « participations déclarées dans cette commune ».
+
+Le lot du 17 octobre propose 20 grandes communes métropolitaines, de **7 h à 19 h en heure de Paris**, soit une fenêtre de comptage de 12 heures. Les contours de l'[API Geo](https://geo.api.gouv.fr/decoupage-administratif/communes) sont conservés sans simplification, îles et portions séparées comprises. Sources et empreintes sont disponibles dans le [lot de préparation](city-counts-17-octobre.md).
+
+Depuis l'accueil, une commune correspondante exige un choix explicite avant la création de l'identité et l'envoi d'une participation. Sur sa page, le bouton indique « Me compter dans cette ville » et la portée est affichée avant l'action. Le serveur exige aussi un marqueur de portée `city` ; un ancien client qui ne connaît pas ce type de comptage ne peut pas l'ajouter implicitement. Ce marqueur ne constitue ni une preuve GPS ni une preuve de consentement juridique.
+
+Les totaux des rassemblements localisés et ceux des communes entières sont calculés et affichés séparément, sans addition des deux familles. Une même personne peut contribuer à plusieurs événements, y compris dans les deux familles ; aucun de ces totaux ne mesure des personnes uniques.
+
+## Découvrir un comptage
+
+La recherche filtre localement le nom et la ville du catalogue chargé, sans accents. Le badge distingue « rassemblement » et « commune entière ». Les filtres temporels excluent les événements terminés, fermés, annulés ou non publiés. Un événement en pause reste visible avec son état. Le catalogue fourni contient au maximum 500 événements, en privilégiant ceux en cours puis à venir : son absence de résultat ne prouve pas l'absence d'un comptage ou d'un rassemblement.
 
 « Autour de moi » demande explicitement un relevé ponctuel, sans suivi continu. La position, même approximative, reste dans la mémoire de la page. Elle n'est ni envoyée à JeMeCompte, ni inscrite dans l'URL, ni mise en stockage local. Un rayon de 5, 25 ou 100 km filtre et classe les résultats à partir du centre approximatif des périmètres. Cette distance à vol d'oiseau est indicative ; un centre de bbox peut notamment se situer hors d'un polygone concave. Elle ne vaut pas contrôle de présence. Le retrait du filtre ou sa réinitialisation ne demande aucun nouveau relevé.
 
@@ -14,9 +24,9 @@ Le parcours commence par la recherche d'un événement existant pour limiter les
 
 Le périmètre est un cercle dont le rayon est **réglable de 100 mètres à 10 kilomètres, avec 500 mètres par défaut**. Un rayon de 500 m couvre 1 km de large ; un rayon de 10 km couvre 20 km de large et environ 314 km². Une zone étendue peut inclure des personnes éloignées du rassemblement. Le chiffre porte donc sur les participations déclarées dans le périmètre choisi et ne garantit pas la présence physique au rassemblement, même lorsque le contrôle local de position réussit. Le périmètre public donne le contexte nécessaire pour lire ce chiffre.
 
-L'événement ouvre immédiatement à la création, pour **1, 2, 4, 8, 12, 24, 48 ou 72 heures**. La durée mesure les heures écoulées depuis la création selon l'heure du serveur : 72 h correspondent à trois fois 24 h, sans remise à zéro quotidienne. Une même identité locale ne participe qu'une fois sur tout l'événement, même s'il dure plusieurs jours.
+Le comptage peut ouvrir immédiatement ou à une date et une heure de Paris choisies, pour **1, 2, 4, 8, 12, 24, 48 ou 72 heures**, avec 4 h par défaut. La durée mesure les heures réellement écoulées depuis le début retenu : 72 h correspondent à trois fois 24 h, sans remise à zéro quotidienne. Une même identité locale ne participe qu'une fois sur tout l'événement, même s'il dure plusieurs jours. Le formulaire public continue de créer des comptages de rassemblement localisé ; les comptages communaux sont préparés séparément par administration.
 
-Le label « Ouvert par un participant » indique une création communautaire, pas une vérification indépendante du rassemblement ou de son périmètre. Le fonctionnement reste en démonstration tant que la collecte réelle n'a pas été validée et activée ; les créations sont alors signalées comme tests.
+Le label « Ouvert par un participant » indique une création communautaire, pas une vérification indépendante du rassemblement ou de son périmètre. Le classement technique de test reste appliqué tant que la collecte réelle n'a pas été validée et activée ; il ne constitue pas un badge public de vérification.
 
 **Créer un événement ne crée aucune présence et n'incrémente aucun compteur.** Le créateur doit ensuite utiliser « Je me compte » dans les mêmes conditions que les autres participants. Aucun identifiant de participant n'est utilisé pour la création. Un identifiant de requête propre à cette création permet de réessayer sans ouvrir plusieurs événements après une réponse perdue ; il ne sert pas d'identité permanente du créateur.
 
@@ -30,9 +40,9 @@ Après un clic volontaire, le navigateur demande ou utilise sa permission de gé
 
 Une clé aléatoire locale produit un identifiant propre à l'événement. Le serveur refuse une seconde insertion du même couple événement/identifiant. L'insertion et l'incrément SQL sont atomiques ; un nouvel affichage « compté » exige un commit serveur. Le jour d'acceptation provient de l'heure PostgreSQL dans le fuseau `Europe/Paris`.
 
-Le compteur d'événement est cumulatif sur toute sa durée, même s'il traverse minuit. Le changement de jour ne réinitialise ni ce compteur ni l'unicité du couple événement/identifiant. Le national du jour et celui d'une ville additionnent les participations nouvellement acceptées ce jour français. Une même personne participant à deux événements peut être comptée deux fois dans le national. Il n'existe aucune identité globale permettant de la reconnaître entre manifestations.
+Le compteur d'événement est cumulatif sur toute sa durée, même s'il traverse minuit. Le changement de jour ne réinitialise ni ce compteur ni l'unicité du couple événement/identifiant. Le national du jour et celui d'une ville additionnent les participations nouvellement acceptées ce jour français, **uniquement dans la même famille de portée**. Une même personne participant à deux événements peut être comptée deux fois dans le total de sa famille. Il n'existe aucune identité globale permettant de la reconnaître entre comptages.
 
-Les événements fictifs sont explicitement marqués. Leurs agrégats nationaux et par ville sont séparés de ceux des événements réels. Le seed de démonstration ne crée aucune présence.
+Les événements fictifs conservent un classement technique séparé. Leurs agrégats nationaux et par ville sont séparés de ceux des événements réels. Le seed de démonstration ne crée aucune présence.
 
 ## Limites à conserver dans toute communication
 

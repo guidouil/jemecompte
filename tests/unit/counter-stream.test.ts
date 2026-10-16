@@ -43,6 +43,19 @@ afterEach(() => {
 });
 
 describe('counter snapshots', () => {
+  it('accepts aggregate decreases after deleting an event without replaying an older larger total', () => {
+    const before = snapshot({ nationalTotal: '20', nationalRevision: '20', cityTotal: '15', cityRevision: '15' });
+    const after = mergeCounterSnapshots(before, snapshot({ serverTime: '2026-10-16T13:00:03.000Z', nationalTotal: '5', nationalRevision: '5', cityTotal: '5', cityRevision: '5' }));
+    expect(after.nationalTotal).toBe('5');
+    expect(after.cityTotal).toBe('5');
+    expect(after.revision).toBe(before.revision);
+    const delayed = mergeCounterSnapshots(after, before);
+    expect(delayed.nationalTotal).toBe('5');
+    expect(delayed.cityTotal).toBe('5');
+    const tied = mergeCounterSnapshots(after, { ...before, serverTime: after.serverTime });
+    expect(tied.nationalTotal).toBe('5');
+  });
+
   it('compares BigInt revisions and accepts independent metadata and justified decreases', () => {
     const current = snapshot({ total: '90071992547409930', revision: '90071992547409930' });
     const metadata = mergeCounterSnapshots(current, snapshot({ metadataVersion: 2, eventStatus: 'paused' }));

@@ -12,8 +12,11 @@ Configurer hors du dépôt :
 - Les paramètres TLS PostgreSQL requis par l'hébergeur, avec vérification du certificat lorsque la chaîne de confiance est disponible. Ne pas supposer que l'URI seule active TLS ; `pg` accepte notamment `PGSSLMODE`.
 - `ADDRESS_HEADER` et `XFF_DEPTH` selon la chaîne de proxys réellement utilisée.
 - `BODY_SIZE_LIMIT=2K` et `COUNTER_EPOCH`, entier positif à augmenter après une restauration faisant reculer les compteurs.
+- Pour l’espace privé `/gui`, `ADMIN_PASSWORD_HASH` et `ADMIN_SESSION_SECRET`, générés avec `npm run admin:password`. Si le rôle de la connexion publique est restreint, fournir une connexion distincte `ADMIN_DATABASE_URL` avec les droits administratifs décrits dans le [guide du back-office](admin.md).
 
 L'origine est aussi utilisée lors du build : reconstruire l'application si elle change. Prévoir HTTPS et un proxy compatible avec les flux SSE. Conserver une seule instance applicative tant que le partage des limiteurs et des canaux SSE entre processus n'est pas implémenté.
+
+`npm run test:pwa` reconstruit le serveur pour l'origine locale de recette `http://127.0.0.1:5176` avant les tests du build. Avant déploiement, reconstruire avec l'origine HTTPS cible : les formulaires utilisent cette origine pour leur contrôle CSRF.
 
 Les valeurs d'instance, identifiants de ressources, tickets support et rapports de mise en service restent dans les paramètres privés de l'hébergeur ou dans `ops/`, dossier local ignoré par Git. Les secrets et sauvegardes ne doivent pas être versionnés. Le fichier `.env.example` contient uniquement une configuration locale d'exemple.
 

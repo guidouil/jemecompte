@@ -3,13 +3,14 @@ import { participationPayloadSchema } from '#lib/shared/contracts';
 import { registerPresence } from '#lib/server/participation';
 import { guardIdentity, guardPeer, parseEventId, privateJson, readPrivateJson, writeRequest } from '#lib/server/http';
 import { record } from '#lib/server/observability';
+import { realEventsApproved } from '#lib/server/db/index';
 
 export const POST: RequestHandler = (event) => writeRequest(async () => {
   const id = parseEventId(event.params.id);
   guardPeer(event, id);
   const payload = await readPrivateJson(event, participationPayloadSchema);
   guardIdentity(id, payload.anonymousEventId);
-  const result = await registerPresence(id, payload);
+  const result = await registerPresence(id, payload, !realEventsApproved());
   if (result.status === 'counted' || result.status === 'already_counted') {
     record(result.status);
     return privateJson(result);

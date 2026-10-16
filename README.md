@@ -25,6 +25,8 @@ La clé locale reste dans IndexedDB ; l'identifiant envoyé diffère selon l'év
 
 ## Trouver et créer un rassemblement
 
+Deux portées sont désormais distinguées : **rassemblement localisé** et **commune entière**. Les comptages de ville n'attestent ni lieu de manifestation ni présence à une manifestation ; ils affichent des participations déclarées dans la commune. Leurs totaux restent séparés de ceux des rassemblements. La création communautaire continue de fonctionner comme auparavant. Le [lot de 20 villes du 17 octobre](docs/city-counts-17-octobre.md) prépare les contours communaux exacts pour **7 h–19 h, heure de Paris**, sans import ni publication automatique : `npm run cities:prepare` est un dry-run sans DB. La migration `0003_counting_scope.sql` doit précéder le nouveau code.
+
 La [recherche locale](http://127.0.0.1:5173/#rassemblements) filtre par nom, ville et période. « Autour de moi » demande un relevé ponctuel et classe les zones à 5, 25 ou 100 km sans transmettre la position, l'ajouter à l'URL ou la conserver dans le stockage. Les distances sont approximatives, jusqu'au centre du périmètre. Le catalogue est borné à 500 événements avec priorité aux comptages actifs ; il ne constitue pas un annuaire exhaustif.
 
 La page [Créer un comptage](http://127.0.0.1:5173/creer) guide le choix d'une commune puis d'un lieu public sur une carte IGN, le réglage du rayon de **100 m à 10 km, avec 500 m par défaut**, le nom, le début et la durée (**1, 2, 4, 8, 12, 24, 48 ou 72 h, avec 4 h par défaut**), puis une confirmation des informations publiques. Elle propose les comptages voisins avant publication. Aucun GPS n'est demandé dans ce parcours et aucune présence n'est ajoutée automatiquement. Après création, la personne rejoint la page du rassemblement pour s'y compter.
@@ -36,6 +38,12 @@ Un rayon de 500 m couvre 1 km de large. À 10 km de rayon, la zone couvre 20 km 
 Sur la page d'un rassemblement, **« Voir le périmètre »** ouvre une carte du polygone exact utilisé pour le comptage, avec une superficie approximative et le rayon approximatif pour un cercle reconnu. Les zones personnalisées restent affichées selon leur contour publié. Cette carte ne demande aucune position et n'ajoute aucune présence ; son fond passe par la même passerelle IGN. Une erreur de carte ne bloque pas le comptage.
 
 **« Copier le lien »** copie l'adresse publique du rassemblement. **« Partager »** ouvre le partage natif lorsque le navigateur le propose. Aucun paramètre, fragment ou identifiant de participation n'est inclus dans le lien. Si la copie automatique est refusée, un champ sélectionnable permet de copier manuellement ; l'annulation du partage est traitée normalement.
+
+**« Afficher le QR code »** génère ce même lien sur l'appareil, avec un encodeur chargé à la demande, sans service tiers. **« Imprimer l'affiche »** prépare une feuille locale pour le dialogue d'impression du navigateur. **« Signaler une erreur »** ouvre un courriel à compléter avec le lien public et le nom du rassemblement ; aucun message n'est envoyé automatiquement.
+
+Le compteur d'un rassemblement indique la date du dernier chiffre reçu et avertit après une minute sans chiffre frais. **« Vérifier ma participation »** retrouve une confirmation déjà reçue, y compris pendant un événement ouvert après rechargement, sans demander le GPS ni ajouter de participation. Le total national de l'accueil indique son heure de chargement et demande une actualisation de page pour être mis à jour.
+
+Après confirmation du formulaire de création, la demande publique et son UUID sont conservés dans `sessionStorage` pour cet onglet. Un rechargement propose de reprendre explicitement la même demande, sans nouvel envoi automatique et sans nouvel UUID. Aucun GPS ni secret participant n'y est conservé. La reprise est retirée après succès, rejet de validation ou abandon confirmé ; une demande de plus de 24 h est retirée à sa prochaine lecture. Si le stockage est bloqué, la reprise reste en mémoire et un message demande de garder la page ouverte.
 
 Le serveur transforme le cercle en GeoJSON, fixe le début immédiat ou valide le début choisi, calcule la fin et déduplique les reprises du même `requestId`. Une réponse perdue peut être redemandée sans modifier les horaires, même après la fin ; réutiliser la demande avec un autre début est refusé. Aucune identité de créateur n'est conservée et aucun droit d'administration n'est accordé au créateur. Les créations portent la mention « Ouvert par un participant » ; nom, commune et zone sont déclaratifs. Avec `REAL_EVENTS_APPROVED=false`, le classement interne `is_test` reste appliqué, sans badge ni préfixe ajouté au nom public. La migration `0002_public_event_wording.sql` nettoie uniquement les anciens textes générés identifiables, en préservant noms saisis, identités, liens, horaires, hashs et compteurs. Modération via la CLI existante. Voir [les choix et limites](docs/adr/003-community-events.md).
 
@@ -63,6 +71,8 @@ Les intégrations vérifient sur PostgreSQL 18 les soumissions concurrentes, rol
 
 ## Administrer
 
+L’espace privé `/gui` utilise un mot de passe unique. `npm run admin:password` prépare les variables serveur `ADMIN_PASSWORD_HASH` et `ADMIN_SESSION_SECRET`. Il permet de rechercher les comptages et de supprimer définitivement un comptage avec ses participations et ses compteurs, après confirmation de son lien public. L’accès reste fermé sans configuration ; voir le [guide du back-office](docs/admin.md).
+
 ```sh
 npm run admin -- import event.json --dry-run
 npm run admin -- import event.json
@@ -77,6 +87,8 @@ L'import attend `slug`, `name`, `cityCode`, `cityName`, `geofence` GeoJSON Polyg
 
 Le drapeau `REAL_EVENTS_APPROVED=true` n'est pas une validation juridique. Il ne doit pas être activé avant résolution des décisions et adaptations décrites dans l'ADR 001.
 
+Le parcours public sélectionne les événements de test lorsque le drapeau est désactivé, et uniquement les événements réels lorsqu'il est activé. Catalogue, liens directs, total national, snapshots, SSE, admission et statut individuel suivent cette séparation ; les caches serveur sont distincts. Aucun événement ni compteur existant n'est converti ou fusionné. Une reprise de création appartenant à l'ancien mode renvoie un conflit explicite, sans rediriger vers un événement masqué. Lors d'une bascule, qualifier aussi une ancienne PWA et ses pages publiques en cache.
+
 ## Architecture et exploitation
 
 SvelteKit 3, Svelte 5, TypeScript strict, CSS natif, PostgreSQL et schéma Drizzle ; API dans le même processus Node. L'unicité SQL et l'incrément sont transactionnels. SSE diffuse des snapshots regroupés, avec polling de secours. La PWA cache des ressources publiques ; aucune file de participations différées n'est créditée après clôture.
@@ -84,6 +96,7 @@ SvelteKit 3, Svelte 5, TypeScript strict, CSS natif, PostgreSQL et schéma Drizz
 - [Base, migrations et CLI](docs/adr/002-database.md)
 - [Déploiement](docs/deployment.md)
 - [Recette du pilote](docs/pilot-checklist.md)
+- [Exploitation du 17 octobre 2026](docs/runbook-17-octobre.md)
 - [Signalement sécurité](SECURITY.md)
 
 Licence [MIT](LICENSE).

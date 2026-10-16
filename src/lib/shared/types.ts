@@ -1,7 +1,9 @@
-import type { Polygon } from 'geojson';
+import type { MultiPolygon, Polygon } from 'geojson';
 
 export type EventStatus = 'draft' | 'published' | 'paused' | 'closed' | 'cancelled';
 export type IntegrityStatus = 'normal' | 'anomaly' | 'suspended';
+export type CountingScope = 'gathering' | 'city';
+export type EventGeofence = Polygon | MultiPolygon;
 
 export interface PublicEvent {
   id: string;
@@ -10,7 +12,8 @@ export interface PublicEvent {
   cityCode: string;
   cityName: string;
   description: string | null;
-  geofence: Polygon;
+  geofence: EventGeofence;
+  countingScope?: CountingScope;
   geofenceVersion: number;
   metadataVersion: number;
   startsAt: string;
@@ -26,6 +29,7 @@ export interface PublicEvent {
 
 export interface CounterSnapshot {
   eventId: string;
+  countingScope?: CountingScope;
   total: string;
   revision: string;
   day: string;
@@ -53,7 +57,8 @@ export type AdmissionStatus =
   | 'not_found'
   | 'rate_limited'
   | 'temporarily_unavailable'
-  | 'real_events_disabled';
+  | 'real_events_disabled'
+  | 'scope_confirmation_required';
 
 export interface ParticipationReply {
   status: AdmissionStatus;
@@ -71,6 +76,7 @@ export interface ParticipationPayload {
   geofenceVersion: number;
   protocolVersion: 1;
   insideZone: true;
+  countingScope?: CountingScope;
 }
 
 export type FlowPhase =

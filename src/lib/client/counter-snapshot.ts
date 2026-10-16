@@ -9,6 +9,7 @@ export function parseCounterSnapshot(value: unknown): CounterSnapshot | undefine
   const snapshot = value as Record<string, unknown>;
   if (
     typeof snapshot.eventId !== 'string' ||
+    (snapshot.countingScope !== undefined && snapshot.countingScope !== 'gathering' && snapshot.countingScope !== 'city') ||
     typeof snapshot.day !== 'string' ||
     !/^\d{4}-\d{2}-\d{2}$/.test(snapshot.day) ||
     !['total', 'revision', 'nationalTotal', 'nationalRevision', 'cityTotal', 'cityRevision', 'epoch'].every(
@@ -49,11 +50,11 @@ export function mergeCounterSnapshots(
     merged.cityTotal = incoming.cityTotal;
     merged.cityRevision = incoming.cityRevision;
   } else if (incoming.day === current.day) {
-    if (BigInt(incoming.nationalRevision) > BigInt(current.nationalRevision)) {
+    // These revisions are sums across events: deleting an event lowers them.
+    // The newer database reading is authoritative, including legitimate decreases.
+    if (Date.parse(incoming.serverTime) > Date.parse(current.serverTime)) {
       merged.nationalTotal = incoming.nationalTotal;
       merged.nationalRevision = incoming.nationalRevision;
-    }
-    if (BigInt(incoming.cityRevision) > BigInt(current.cityRevision)) {
       merged.cityTotal = incoming.cityTotal;
       merged.cityRevision = incoming.cityRevision;
     }
@@ -64,6 +65,9 @@ export function mergeCounterSnapshots(
     merged.metadataVersion = incoming.metadataVersion;
     merged.startsAt = incoming.startsAt;
     merged.endsAt = incoming.endsAt;
+  }
+  if (incoming.metadataVersion >= current.metadataVersion && incoming.countingScope !== undefined) {
+    merged.countingScope = incoming.countingScope;
   }
   if (Date.parse(incoming.serverTime) > Date.parse(current.serverTime)) {
     merged.serverTime = incoming.serverTime;

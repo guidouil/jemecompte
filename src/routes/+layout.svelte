@@ -8,7 +8,7 @@
 <svelte:head>
   <meta name="theme-color" content="#f5f5ed" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#141c17" media="(prefers-color-scheme: dark)" />
-  <meta name="description" content="Un comptage volontaire, sur place, sans inscription. Découvrez JeMeCompte et les limites de son protocole." />
+  <meta name="description" content="Des comptages volontaires par rassemblement ou par commune, sans inscription. Découvrez JeMeCompte et les limites de son protocole." />
 </svelte:head>
 
 <a class="skip-link" href="#contenu">Aller au contenu</a>
@@ -17,7 +17,7 @@
   <header class="site-header">
     <a class="wordmark" href="/" aria-label="JeMeCompte, accueil">JeMeCompte<span class="brand-dot" aria-hidden="true"></span></a>
     <nav class="primary-nav" aria-label="Navigation principale">
-      <a class="header-link" href="/#rassemblements">Rassemblements</a>
+      <a class="header-link" href="/#rassemblements">Comptages</a>
       <a class="header-link" href="/creer">Créer</a>
       <a class="header-link" href="/comment-ca-marche">La méthode <span aria-hidden="true">↗</span></a>
     </nav>

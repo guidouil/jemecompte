@@ -20,9 +20,11 @@
     "db:migrate": "node --env-file-if-exists=.env --import tsx scripts/migrate.ts",
     "db:generate": "drizzle-kit generate",
     "admin": "node --env-file-if-exists=.env --import tsx scripts/admin.ts",
+    "admin:password": "node --import tsx scripts/admin-password.ts",
+    "cities:prepare": "node --env-file-if-exists=.env --import tsx scripts/city-counts.ts",
     "db:reconcile": "node --env-file-if-exists=.env --import tsx scripts/reconcile.ts",
     "db:purge": "node --env-file-if-exists=.env --import tsx scripts/purge.ts",
-    "test:pwa": "node --env-file-if-exists=.env node_modules/@playwright/test/cli.js test --config=playwright.production.config.ts",
+    "test:pwa": "node --env-file-if-exists=.env --import tsx scripts/test-production.ts",
     "test:load": "node --env-file-if-exists=.env --import tsx scripts/load-smoke.ts"
   },
   "dependencies": {
@@ -31,6 +33,7 @@
     "drizzle-orm": "0.45.4",
     "leaflet": "1.9.4",
     "pg": "8.23.1",
+    "qrcode-generator": "2.0.4",
     "zod": "4.6.7"
   },
   "devDependencies": {
@@ -45,6 +48,7 @@
     "@types/pg": "8.23.1",
     "drizzle-kit": "0.31.11",
     "fake-indexeddb": "6.2.5",
+    "jsqr": "1.4.0",
     "svelte": "5.57.2",
     "svelte-check": "4.7.6",
     "tsx": "4.23.15",

@@ -1,0 +1,439 @@
+{
+  "title": "Comptages communaux du 17 octobre 2026 — données administratives publiques",
+  "retrievedAt": "2026-10-16T19:00:18.553234+00:00",
+  "population": {
+    "source_page": "https://www.insee.fr/fr/statistiques/8680726?sommaire=8681011",
+    "source_zip": "https://www.insee.fr/fr/statistiques/fichier/8680726/ensemble.zip",
+    "variable": "PMUN",
+    "reference_date": "2023-01-01",
+    "territorial_limits_date": "2025-01-01",
+    "effective_date": "2026-01-01",
+    "all_api_values_verified": true,
+    "note": "Fichier communes detaille les arrondissements municipaux PLM: valeurs des communes Paris/Lyon/Marseille reconstituees par somme des PMUN et verifiees aussi sur INSEE Focus374."
+  },
+  "geometrySource": "https://geo.api.gouv.fr/decoupage-administratif/communes",
+  "geometrySha256Serialization": "SHA-256 du JSON UTF-8 produit par JSON.stringify({type: geofence.type, coordinates: geofence.coordinates}), sans espaces. Géométries sans simplification.",
+  "scopeNotice": "Limites communales administratives. Aucun lieu, parcours ou rassemblement confirmé ne découle de ces données.",
+  "communes": [
+    {
+      "id": "63677163-d929-5941-9f53-e73593aff543",
+      "code": "75056",
+      "name": "Paris",
+      "populationMunicipale2023": 2103778,
+      "apiSource": "https://geo.api.gouv.fr/communes/75056?fields=nom,code,codeDepartement,population,centre,contour&format=json&geometry=contour",
+      "centre": {
+        "type": "Point",
+        "coordinates": [
+          2.347,
+          48.8589
+        ]
+      },
+      "geometryType": "Polygon",
+      "polygons": 1,
+      "rings": 1,
+      "verticesIncludingClosing": 532,
+      "holes": 0,
+      "geometrySha256": "b8a2aa1f7bc905111a33c5eab7000603506ca7b9a9914e4cfeaaddc1e3f10b5b",
+      "geometryBytes": 11099
+    },
+    {
+      "id": "69f929bd-ed04-5a21-ba7f-ab1f4e4275a9",
+      "code": "13055",
+      "name": "Marseille",
+      "populationMunicipale2023": 886040,
+      "apiSource": "https://geo.api.gouv.fr/communes/13055?fields=nom,code,codeDepartement,population,centre,contour&format=json&geometry=contour",
+      "centre": {
+        "type": "Point",
+        "coordinates": [
+          5.3806,
+          43.2803
+        ]
+      },
+      "geometryType": "MultiPolygon",
+      "polygons": 47,
+      "rings": 47,
+      "verticesIncludingClosing": 7390,
+      "holes": 0,
+      "geometrySha256": "fb5f0e71d1b20edc1af04c75991e1f24be78db6e5d90a70d1e5f0f93d242539e",
+      "geometryBytes": 153821
+    },
+    {
+      "id": "d0ad51db-e835-57cc-8711-649fdc912d7a",
+      "code": "69123",
+      "name": "Lyon",
+      "populationMunicipale2023": 519127,
+      "apiSource": "https://geo.api.gouv.fr/communes/69123?fields=nom,code,codeDepartement,population,centre,contour&format=json&geometry=contour",
+      "centre": {
+        "type": "Point",
+        "coordinates": [
+          4.8351,
+          45.758
+        ]
+      },
+      "geometryType": "Polygon",
+      "polygons": 1,
+      "rings": 1,
+      "verticesIncludingClosing": 635,
+      "holes": 0,
+      "geometrySha256": "a6f91d3ecd3081a9c8e9803d87a8601158969a716efa767a32ddad9d7e5040ca",
+      "geometryBytes": 13240
+    },
+    {
+      "id": "0e51aafa-99f7-5fe9-85e9-2805fdec259e",
+      "code": "31555",
+      "name": "Toulouse",
+      "populationMunicipale2023": 514819,
+      "apiSource": "https://geo.api.gouv.fr/communes/31555?fields=nom,code,codeDepartement,population,centre,contour&format=json&geometry=contour",
+      "centre": {
+        "type": "Point",
+        "coordinates": [
+          1.4328,
+          43.6007
+        ]
+      },
+      "geometryType": "Polygon",
+      "polygons": 1,
+      "rings": 1,
+      "verticesIncludingClosing": 1191,
+      "holes": 0,
+      "geometrySha256": "590d0a58cc69d066d875e4d1641717ab7cf2d481fc85457ed47ccb29906c5156",
+      "geometryBytes": 24784
+    },
+    {
+      "id": "554dec85-e19d-5eb8-a8b6-bcb7ed3e6dbf",
+      "code": "06088",
+      "name": "Nice",
+      "populationMunicipale2023": 357737,
+      "apiSource": "https://geo.api.gouv.fr/communes/06088?fields=nom,code,codeDepartement,population,centre,contour&format=json&geometry=contour",
+      "centre": {
+        "type": "Point",
+        "coordinates": [
+          7.2528,
+          43.7032
+        ]
+      },
+      "geometryType": "Polygon",
+      "polygons": 1,
+      "rings": 1,
+      "verticesIncludingClosing": 1499,
+      "holes": 0,
+      "geometrySha256": "87789f15ef2f747b68da063f30764f24cb419624dbf0e3e71a8f8db297a0b0bb",
+      "geometryBytes": 31179
+    },
+    {
+      "id": "d922226c-8024-59c9-87e9-aa39b457b991",
+      "code": "44109",
+      "name": "Nantes",
+      "populationMunicipale2023": 327734,
+      "apiSource": "https://geo.api.gouv.fr/communes/44109?fields=nom,code,codeDepartement,population,centre,contour&format=json&geometry=contour",
+      "centre": {
+        "type": "Point",
+        "coordinates": [
+          -1.5603,
+          47.2382
+        ]
+      },
+      "geometryType": "Polygon",
+      "polygons": 1,
+      "rings": 1,
+      "verticesIncludingClosing": 804,
+      "holes": 0,
+      "geometrySha256": "aef991ed6a2e6a4c6d8629cac0e660824646c76499166b2821d07a38358603ab",
+      "geometryBytes": 17521
+    },
+    {
+      "id": "507e29aa-037a-5990-9d7d-9320a2d50e38",
+      "code": "34172",
+      "name": "Montpellier",
+      "populationMunicipale2023": 310240,
+      "apiSource": "https://geo.api.gouv.fr/communes/34172?fields=nom,code,codeDepartement,population,centre,contour&format=json&geometry=contour",
+      "centre": {
+        "type": "Point",
+        "coordinates": [
+          3.8742,
+          43.61
+        ]
+      },
+      "geometryType": "Polygon",
+      "polygons": 1,
+      "rings": 1,
+      "verticesIncludingClosing": 806,
+      "holes": 0,
+      "geometrySha256": "9f28c5cfe4f6fcca4df8a899cf1e13c1cfa4bfb95358c25ec1866d471a85126f",
+      "geometryBytes": 16791
+    },
+    {
+      "id": "60e0b560-df9e-50b5-b0e1-66982b7a67b4",
+      "code": "67482",
+      "name": "Strasbourg",
+      "populationMunicipale2023": 293771,
+      "apiSource": "https://geo.api.gouv.fr/communes/67482?fields=nom,code,codeDepartement,population,centre,contour&format=json&geometry=contour",
+      "centre": {
+        "type": "Point",
+        "coordinates": [
+          7.7621,
+          48.5691
+        ]
+      },
+      "geometryType": "Polygon",
+      "polygons": 1,
+      "rings": 1,
+      "verticesIncludingClosing": 923,
+      "holes": 0,
+      "geometrySha256": "f82073bca1be5a2e555599ecf986ec12eed2a5891ffb72e3bd85d4d3171cdcab",
+      "geometryBytes": 19178
+    },
+    {
+      "id": "fad2b272-c9ed-5dbd-9f8b-069ff8f02aa8",
+      "code": "33063",
+      "name": "Bordeaux",
+      "populationMunicipale2023": 267991,
+      "apiSource": "https://geo.api.gouv.fr/communes/33063?fields=nom,code,codeDepartement,population,centre,contour&format=json&geometry=contour",
+      "centre": {
+        "type": "Point",
+        "coordinates": [
+          -0.5848,
+          44.8624
+        ]
+      },
+      "geometryType": "Polygon",
+      "polygons": 1,
+      "rings": 1,
+      "verticesIncludingClosing": 576,
+      "holes": 0,
+      "geometrySha256": "7ee55d8ef2f776043bf25d4a0e7beb7e1ae9b69ee22cb5aebbcf50cd1456ce9e",
+      "geometryBytes": 12584
+    },
+    {
+      "id": "4829e856-7b07-5f36-8bb5-4e2846e97ad9",
+      "code": "59350",
+      "name": "Lille",
+      "populationMunicipale2023": 238246,
+      "apiSource": "https://geo.api.gouv.fr/communes/59350?fields=nom,code,codeDepartement,population,centre,contour&format=json&geometry=contour",
+      "centre": {
+        "type": "Point",
+        "coordinates": [
+          3.0468,
+          50.6311
+        ]
+      },
+      "geometryType": "Polygon",
+      "polygons": 1,
+      "rings": 1,
+      "verticesIncludingClosing": 606,
+      "holes": 0,
+      "geometrySha256": "af9cec2fed451018a515091794d4129508bcbcfd535fd32e00f02384821d754f",
+      "geometryBytes": 12614
+    },
+    {
+      "id": "e9238573-f1b8-51d2-af9d-554b21b2270b",
+      "code": "35238",
+      "name": "Rennes",
+      "populationMunicipale2023": 230890,
+      "apiSource": "https://geo.api.gouv.fr/communes/35238?fields=nom,code,codeDepartement,population,centre,contour&format=json&geometry=contour",
+      "centre": {
+        "type": "Point",
+        "coordinates": [
+          -1.6884,
+          48.1159
+        ]
+      },
+      "geometryType": "Polygon",
+      "polygons": 1,
+      "rings": 1,
+      "verticesIncludingClosing": 1007,
+      "holes": 0,
+      "geometrySha256": "63aed581030fc13628a21afb035af5981fc92c534104e1e64e1d6661f2aa702d",
+      "geometryBytes": 21987
+    },
+    {
+      "id": "8da11912-4033-5c1d-8e50-5f3bfdf9c435",
+      "code": "83137",
+      "name": "Toulon",
+      "populationMunicipale2023": 179116,
+      "apiSource": "https://geo.api.gouv.fr/communes/83137?fields=nom,code,codeDepartement,population,centre,contour&format=json&geometry=contour",
+      "centre": {
+        "type": "Point",
+        "coordinates": [
+          5.9334,
+          43.1364
+        ]
+      },
+      "geometryType": "MultiPolygon",
+      "polygons": 4,
+      "rings": 4,
+      "verticesIncludingClosing": 1258,
+      "holes": 0,
+      "geometrySha256": "523dc82df6a156de5f4ed0e0001da6e268fbf042f70e07e861650c57a78b2640",
+      "geometryBytes": 26193
+    },
+    {
+      "id": "8842b75f-f15b-5a22-b247-93286e448772",
+      "code": "51454",
+      "name": "Reims",
+      "populationMunicipale2023": 177674,
+      "apiSource": "https://geo.api.gouv.fr/communes/51454?fields=nom,code,codeDepartement,population,centre,contour&format=json&geometry=contour",
+      "centre": {
+        "type": "Point",
+        "coordinates": [
+          4.0551,
+          49.2535
+        ]
+      },
+      "geometryType": "Polygon",
+      "polygons": 1,
+      "rings": 1,
+      "verticesIncludingClosing": 582,
+      "holes": 0,
+      "geometrySha256": "6ad9a3e717f21bfd05b6ff1fd89ed452d53637bf21184167ff04dccdc82fea1b",
+      "geometryBytes": 12142
+    },
+    {
+      "id": "6149bee1-64bf-53a4-904d-16350964b787",
+      "code": "42218",
+      "name": "Saint-Étienne",
+      "populationMunicipale2023": 173136,
+      "apiSource": "https://geo.api.gouv.fr/communes/42218?fields=nom,code,codeDepartement,population,centre,contour&format=json&geometry=contour",
+      "centre": {
+        "type": "Point",
+        "coordinates": [
+          4.3665,
+          45.4241
+        ]
+      },
+      "geometryType": "MultiPolygon",
+      "polygons": 2,
+      "rings": 2,
+      "verticesIncludingClosing": 1780,
+      "holes": 0,
+      "geometrySha256": "d0a00b42ce22e92f9a0e8b555984881fb66bc7640503e47d3cba960f24a43b04",
+      "geometryBytes": 36995
+    },
+    {
+      "id": "f0286a44-d359-5a1b-8def-8782b8d67104",
+      "code": "76351",
+      "name": "Le Havre",
+      "populationMunicipale2023": 166687,
+      "apiSource": "https://geo.api.gouv.fr/communes/76351?fields=nom,code,codeDepartement,population,centre,contour&format=json&geometry=contour",
+      "centre": {
+        "type": "Point",
+        "coordinates": [
+          0.1312,
+          49.4958
+        ]
+      },
+      "geometryType": "Polygon",
+      "polygons": 1,
+      "rings": 1,
+      "verticesIncludingClosing": 1161,
+      "holes": 0,
+      "geometrySha256": "00a7ee4798b5a9325875ef4d0f803fab2b09d9cbe61f73aea81f5a4331c0ac3c",
+      "geometryBytes": 24135
+    },
+    {
+      "id": "1d13037b-b380-54b2-af07-87ca8b9c9334",
+      "code": "69266",
+      "name": "Villeurbanne",
+      "populationMunicipale2023": 163684,
+      "apiSource": "https://geo.api.gouv.fr/communes/69266?fields=nom,code,codeDepartement,population,centre,contour&format=json&geometry=contour",
+      "centre": {
+        "type": "Point",
+        "coordinates": [
+          4.8898,
+          45.7719
+        ]
+      },
+      "geometryType": "Polygon",
+      "polygons": 1,
+      "rings": 1,
+      "verticesIncludingClosing": 212,
+      "holes": 0,
+      "geometrySha256": "e9799a4a30aef123bb446a8e8ae9fb300a197b0680e2d6ba780c2f3c9a366814",
+      "geometryBytes": 4446
+    },
+    {
+      "id": "fa442b97-8c74-5f07-810c-252c15bbac51",
+      "code": "21231",
+      "name": "Dijon",
+      "populationMunicipale2023": 161830,
+      "apiSource": "https://geo.api.gouv.fr/communes/21231?fields=nom,code,codeDepartement,population,centre,contour&format=json&geometry=contour",
+      "centre": {
+        "type": "Point",
+        "coordinates": [
+          5.0322,
+          47.3319
+        ]
+      },
+      "geometryType": "Polygon",
+      "polygons": 1,
+      "rings": 1,
+      "verticesIncludingClosing": 664,
+      "holes": 0,
+      "geometrySha256": "fbb0f4e7ea9a3441975fc7708e0530ba9d2d9c30b1f2faebda412384db31c246",
+      "geometryBytes": 13854
+    },
+    {
+      "id": "697050e0-f3b0-5464-84c1-d2693d8f11ac",
+      "code": "49007",
+      "name": "Angers",
+      "populationMunicipale2023": 159022,
+      "apiSource": "https://geo.api.gouv.fr/communes/49007?fields=nom,code,codeDepartement,population,centre,contour&format=json&geometry=contour",
+      "centre": {
+        "type": "Point",
+        "coordinates": [
+          -0.5629,
+          47.4819
+        ]
+      },
+      "geometryType": "Polygon",
+      "polygons": 1,
+      "rings": 1,
+      "verticesIncludingClosing": 649,
+      "holes": 0,
+      "geometrySha256": "0762f499f949731a0a76206f12e4c138bea7a1e1a7baba6bf1d8a94a31a0ed6a",
+      "geometryBytes": 14180
+    },
+    {
+      "id": "8754cc28-d129-5fcd-989d-2b37f285101f",
+      "code": "38185",
+      "name": "Grenoble",
+      "populationMunicipale2023": 156140,
+      "apiSource": "https://geo.api.gouv.fr/communes/38185?fields=nom,code,codeDepartement,population,centre,contour&format=json&geometry=contour",
+      "centre": {
+        "type": "Point",
+        "coordinates": [
+          5.7155,
+          45.1842
+        ]
+      },
+      "geometryType": "Polygon",
+      "polygons": 1,
+      "rings": 1,
+      "verticesIncludingClosing": 283,
+      "holes": 0,
+      "geometrySha256": "b07361555993660f794a4da652306a4688383383773ad10a27f68c45cce494ad",
+      "geometryBytes": 5910
+    },
+    {
+      "id": "cde6dff5-cb0d-512c-bc94-1f4fad061f30",
+      "code": "30189",
+      "name": "Nîmes",
+      "populationMunicipale2023": 151839,
+      "apiSource": "https://geo.api.gouv.fr/communes/30189?fields=nom,code,codeDepartement,population,centre,contour&format=json&geometry=contour",
+      "centre": {
+        "type": "Point",
+        "coordinates": [
+          4.3429,
+          43.8322
+        ]
+      },
+      "geometryType": "Polygon",
+      "polygons": 1,
+      "rings": 1,
+      "verticesIncludingClosing": 1212,
+      "holes": 0,
+      "geometrySha256": "a67b5c00afe0a4b3c9373b15f00ac6968a8bb9ba624fe3bc0f4df00d1613230b",
+      "geometryBytes": 25228
+    }
+  ]
+}

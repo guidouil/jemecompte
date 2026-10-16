@@ -35,6 +35,7 @@ const messages = {
   rate_limited: 'Le service reçoit beaucoup de demandes. Réessayez dans quelques instants.',
   temporarily_unavailable: 'Le service est temporairement indisponible. Réessayez dans un instant.',
   real_events_disabled: 'Le comptage n’est pas disponible pour cet événement.',
+  scope_confirmation_required: 'Ce comptage couvre une commune entière. Rechargez la page, vérifiez sa portée et choisissez explicitement ce comptage avant de participer.',
   details_expired: 'Les détails individuels ne sont plus conservés. Le total public reste disponible.',
   offline: 'Vous êtes hors connexion. Retrouvez du réseau puis réessayez.',
   network_error: 'La confirmation n’est pas arrivée. Votre participation n’est pas encore confirmée.',
@@ -281,7 +282,8 @@ export function createParticipationFlow(options: FlowOptions) {
         anonymousEventId: identity,
         geofenceVersion: event.geofenceVersion,
         protocolVersion: 1,
-        insideZone: true
+        insideZone: true,
+        ...(event.countingScope === 'city' ? { countingScope: 'city' as const } : {})
       },
       capturedAt,
       requests: 0,
@@ -317,10 +319,12 @@ export function createParticipationFlow(options: FlowOptions) {
     if (destroyed) return;
     if (result.events.length === 0) {
       fail('outside_zone');
-    } else if (result.events.length > 1) {
+    } else if (result.events.length > 1 || (!selectedEventId && result.events[0]?.countingScope === 'city')) {
       choices = result.events;
       chosenAt = result.capturedAt;
-      emit({ phase: 'choosing', message: 'Pour quel événement souhaitez-vous vous compter ?', choices });
+      emit({ phase: 'choosing', message: result.events.length === 1
+        ? 'Ce comptage couvre une commune entière. Confirmez votre choix avant de vous compter ; cette zone ne confirme aucun lieu de manifestation.'
+        : 'Pour quel comptage souhaitez-vous déclarer votre participation ?', choices });
     } else {
       choices = [];
       await admit(result.events[0]!, result.capturedAt);
