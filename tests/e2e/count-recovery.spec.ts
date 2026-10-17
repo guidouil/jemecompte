@@ -1,8 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { Pool } from 'pg';
-import { randomUUID } from 'node:crypto';
-import type { CounterSnapshot } from '../../src/lib/shared/types';
+import { randomBytes, randomUUID } from 'node:crypto';
+import type { CounterSnapshot, ParticipationReply } from '../../src/lib/shared/types';
 
 const testUrl = process.env.TEST_DATABASE_URL;
 if (!testUrl || !new URL(testUrl).pathname.endsWith('_test')) throw new Error('A dedicated _test database is required.');
@@ -168,6 +168,73 @@ test('shows the server update time in Paris and keeps an old-number warning unti
   await expect(updated).toContainText('moins d’une minute');
   await expect(page.locator('.counter-stale-warning')).toHaveCount(0);
   await expect(page.locator('.counter-footnote')).toContainText('Compteur connecté');
+});
+
+test('shows the national gathering total on home after counting while keeping event and city totals separate', async ({ page, request }) => {
+  const extraGatheringId = randomUUID();
+  const cityId = randomUUID();
+  const extraIds = [extraGatheringId, cityId];
+  const formatCount = (value: string) => new Intl.NumberFormat('fr-FR').format(BigInt(value));
+  try {
+    for (const [id, scope] of [[extraGatheringId, 'gathering'], [cityId, 'city']] as const) {
+      await pool.query(`INSERT INTO events
+        (id,slug,name,city_code,city_name,geofence,counting_scope,starts_at,ends_at,status,is_test)
+        VALUES ($1,$2,'Recette fictive du total national','75056','Paris',$3,$4,clock_timestamp()-interval '1 hour',clock_timestamp()+interval '1 hour','published',true)`,
+      [id, `national-${id}`, { type: 'Polygon', coordinates: [[[2.36, 48.86], [2.37, 48.86], [2.37, 48.87], [2.36, 48.87], [2.36, 48.86]]] }, scope]);
+    }
+    let cityNationalTotal = '';
+    for (const [id, scope] of [[extraGatheringId, 'gathering'], [cityId, 'city']] as const) {
+      const response = await request.post(`/api/events/${id}/presences`, {
+        headers: { Origin: 'http://127.0.0.1:5175' },
+        data: { anonymousEventId: randomBytes(32).toString('base64url'), geofenceVersion: 1, protocolVersion: 1, insideZone: true, countingScope: scope }
+      });
+      expect(response.ok()).toBe(true);
+      const reply = await response.json() as ParticipationReply;
+      expect(reply.status).toBe('counted');
+      expect(reply.snapshot?.countingScope).toBe(scope);
+      if (scope === 'city') cityNationalTotal = reply.snapshot!.nationalTotal;
+    }
+
+    await trackGeolocation(page);
+    const before = await total();
+    await page.goto(`/evenements/${slug}`);
+    const confirmation = page.waitForResponse((response) => response.url().endsWith(`/api/events/${eventId}/presences`));
+    await page.getByRole('button', { name: /^JE ME COMPTE/ }).click();
+    const reply = await (await confirmation).json() as ParticipationReply;
+    expect(reply.status).toBe('counted');
+    const snapshot = reply.snapshot!;
+    expect(BigInt(snapshot.nationalTotal)).toBeGreaterThan(BigInt(snapshot.total));
+    await expect(page.getByRole('button', { name: /VOUS ÊTES COMPTÉ/ })).toBeVisible();
+    await expect(page.locator('.counter-number')).toHaveText(formatCount(snapshot.total));
+    expect(await total()).toBe(before + 1);
+
+    await page.goto('/');
+    const gatherings = page.locator('.national-count[data-counting-scope="gathering"]');
+    const cities = page.locator('.national-count[data-counting-scope="city"]');
+    // The national SSR read has a three-second cache, so reload until the accepted write is visible.
+    await expect.poll(async () => {
+      await page.reload();
+      return gatherings.locator('strong').textContent();
+    }, { timeout: 10_000 }).toBe(formatCount(snapshot.nationalTotal));
+    await expect(page.locator('.counter-number')).toHaveText(formatCount(snapshot.nationalTotal));
+    await expect(page.locator('.counter-number')).not.toHaveAttribute('aria-label', 'Aucun comptage sélectionné');
+    await expect(page.locator('.counter-heading')).toContainText('RASSEMBLEMENTS LOCALISÉS');
+    await expect(page.locator('.counter-caption')).toContainText('participations enregistrées');
+    await expect(page.locator('.counter-caption')).toContainText('France');
+    await expect(page.locator('.national-count')).toHaveCount(2);
+    await expect(cities.locator('strong')).toHaveText(formatCount(cityNationalTotal));
+    await expect(page.locator('.national-families-note')).toContainText('Une même personne peut contribuer aux deux familles');
+    await expect(page.locator('.counter-footnote')).not.toContainText('après le choix d’un comptage');
+
+    await page.goto(`/evenements/${slug}`);
+    await expect(page.locator('.counter-number')).toHaveText(formatCount(snapshot.total));
+    await expect(page.locator('.counter-heading')).toContainText('LE COMPTEUR DU RASSEMBLEMENT');
+    expect(await total()).toBe(before + 1);
+  } finally {
+    await pool.query('DELETE FROM presences WHERE event_id=ANY($1::uuid[])', [extraIds]);
+    await pool.query('DELETE FROM event_counters WHERE event_id=ANY($1::uuid[])', [extraIds]);
+    await pool.query('DELETE FROM events WHERE id=ANY($1::uuid[])', [extraIds]);
+  }
 });
 
 test('identifies when the home national total was loaded and how to refresh it', async ({ page }) => {

@@ -56,7 +56,9 @@
   let counted = $derived(flowState.phase === 'counted' || flowState.phase === 'already_counted');
   let noEvents = $derived(!currentEvent && events.length === 0);
   let disabled = $derived(!ready || !serviceAvailable || !online || noEvents || busy || counted || ended || notStarted || paused || flowState.phase === 'pending' || flowState.phase === 'choosing');
-  let total = $derived(currentSnapshot ? formatCount(currentSnapshot.total) : '—');
+  let total = $derived(currentEvent
+    ? currentSnapshot ? formatCount(currentSnapshot.total) : '—'
+    : serviceAvailable ? formatCount(nationalTotal) : '—');
   let snapshotAge = $derived(currentSnapshot ? Math.max(0, now - Date.parse(currentSnapshot.serverTime)) : 0);
   let staleSnapshot = $derived(Boolean(currentSnapshot && snapshotAge >= STALE_SNAPSHOT_MS));
   let snapshotIsCity = $derived((currentSnapshot?.countingScope ?? currentEvent?.countingScope) === 'city');
@@ -235,9 +237,9 @@
     </div>
 
     <div class="counter-column">
-      <div class="counter-heading"><span class="eyebrow">{isCity ? 'LE COMPTEUR DE LA COMMUNE' : currentEvent ? 'LE COMPTEUR DU RASSEMBLEMENT' : 'CHAQUE PRÉSENCE COMPTE'}</span><span class="counter-symbol" aria-hidden="true">+</span></div>
-      <p class="counter-number" aria-label={currentSnapshot ? `${total} participations ${isCity ? 'déclarées dans cette commune' : 'comptées pour cet événement'}` : 'Aucun comptage sélectionné'}>{total}</p>
-      <p class="counter-caption">{#if isCity}participations déclarées<br />dans cette commune{:else}personnes se sont<br />comptées {currentEvent ? 'ici' : 'sur place'}{/if}<span class="title-dot">.</span></p>
+      <div class="counter-heading"><span class="eyebrow">{isCity ? 'LE COMPTEUR DE LA COMMUNE' : currentEvent ? 'LE COMPTEUR DU RASSEMBLEMENT' : 'AUJOURD’HUI, EN FRANCE · RASSEMBLEMENTS LOCALISÉS'}</span><span class="counter-symbol" aria-hidden="true">+</span></div>
+      <p class="counter-number" aria-label={currentEvent ? currentSnapshot ? `${total} participations ${isCity ? 'déclarées dans cette commune' : 'comptées pour cet événement'}` : 'Compteur de ce comptage indisponible' : serviceAvailable ? `${total} participations enregistrées aujourd’hui en France pour les rassemblements localisés` : 'Total national indisponible'}>{total}</p>
+      <p class="counter-caption">{#if isCity}participations déclarées<br />dans cette commune{:else if currentEvent}personnes se sont<br />comptées ici{:else}participations enregistrées<br />aujourd’hui en France{/if}<span class="title-dot">.</span></p>
       <div class="counter-footnote">
         {#if currentEvent && currentSnapshot}
           <span class="connection-dot" class:disconnected={connection !== 'live' || !online || staleSnapshot} aria-hidden="true"></span>
@@ -245,7 +247,9 @@
             <p>{!online || connection === 'offline' ? 'Hors ligne · dernier chiffre reçu' : staleSnapshot ? 'Chiffre ancien · actualisation en attente' : connection === 'live' ? 'Compteur connecté' : 'Actualisation en cours…'}</p>
             <p class="counter-updated">Dernière mise à jour : <time datetime={currentSnapshot.serverTime}>{updateDateFormat.format(new Date(currentSnapshot.serverTime))}</time> (heure de Paris), il y a {formatAge(snapshotAge)}.</p>
           </div>
-        {:else}<p>Le compteur apparaîtra après le choix d’un comptage.</p>{/if}
+        {:else if currentEvent}<p>Le compteur de ce comptage est momentanément indisponible.</p>
+        {:else if serviceAvailable}<p>Une personne peut participer à plusieurs comptages.</p>
+        {:else}<p>Le total national est momentanément indisponible.</p>{/if}
       </div>
       {#if staleSnapshot}<p class="notice counter-stale-warning" role="status">Ce chiffre date de plus d’une minute et peut avoir évolué. Attendez une nouvelle mise à jour du serveur.</p>{/if}
       {#if integrity === 'anomaly'}<p class="notice">Une anomalie est en cours d’examen. Ce chiffre est à interpréter avec prudence.</p>{/if}
