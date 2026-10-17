@@ -1,5 +1,6 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { realpath } from 'node:fs/promises';
+import { lstat, open, realpath } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { inventory, isPublicSource, jsonBytes, MANIFEST_PATH, publicSourcePaths, readPublicSource, safeDirectory, sha256, writeOutputFile } from './release-files.mjs';
 
@@ -14,6 +15,22 @@ const head = ownsGitTree ? git(['rev-parse', 'HEAD']) : null;
 const platformCommit = /^[a-f0-9]{40,64}$/.test(process.env.COMMIT_ID ?? '') ? process.env.COMMIT_ID ?? null : null;
 const commit = head || platformCommit;
 if (process.env.GITHUB_SHA && process.env.GITHUB_SHA !== head) throw new Error('GitHub commit does not match checkout');
+// Clever may retain Git but remove .nvmrc before its native Node build. Recover
+// only this missing, regular tracked file from the platform's exact commit.
+if (head && platformCommit === head && !process.env.GITHUB_SHA) {
+  const nvmrc = new URL('../.nvmrc', import.meta.url);
+  let missing = false;
+  try { await lstat(nvmrc); }
+  catch (error) { if (error instanceof Error && 'code' in error && error.code === 'ENOENT') missing = true; else throw error; }
+  if (missing) {
+    const entry = git(['ls-tree', head, '--', '.nvmrc']);
+    if (!/^100(?:644|755) blob [a-f0-9]{40,64}\t\.nvmrc$/.test(entry || '')) throw new Error('Missing .nvmrc is not a regular file in the platform commit');
+    const bytes = execFileSync('git', ['cat-file', 'blob', `${head}:.nvmrc`], { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] });
+    // Exclusive creation also refuses a file or link appearing after lstat.
+    const output = await open(nvmrc, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, entry?.startsWith('100755 ') ? 0o755 : 0o644);
+    try { await output.writeFile(bytes); } finally { await output.close(); }
+  }
+}
 const tracked = ownsGitTree ? git(['ls-files', '--cached', '--others', '--exclude-standard', '-z']) : null;
 const sourceInventory = tracked === null ? 'public-filesystem' : 'git-visible';
 const candidates = tracked === null

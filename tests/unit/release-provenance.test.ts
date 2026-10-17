@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { execFileSync, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import os from 'node:os';
@@ -154,5 +154,62 @@ describe('public source and release inventories', () => {
     await rm(path.join(root, 'src/untracked.ts'));
     await writeFile(path.join(root, 'src/a.ts'), 'modified source');
     expect(run().stderr).toContain('clean Git checkout');
+  });
+
+  it('restores only Clever-removed .nvmrc bytes from the matching Git commit and preserves the clean inventory', async () => {
+    const root = await fixture();
+    await mkdir(path.join(root, 'scripts'));
+    await mkdir(path.join(root, 'src'));
+    await mkdir(path.join(root, 'node_modules/vite/bin'), { recursive: true });
+    for (const name of ['build-release.mjs', 'release-files.mjs']) await copyFile(new URL(`../../scripts/${name}`, import.meta.url), path.join(root, 'scripts', name));
+    await writeFile(path.join(root, '.gitignore'), 'node_modules/\nbuild/\n');
+    await writeFile(path.join(root, 'package.json'), '{"private":true,"type":"module"}');
+    await writeFile(path.join(root, 'package-lock.json'), '{"lockfileVersion":3}');
+    await writeFile(path.join(root, 'src/a.ts'), 'export const a = 1;');
+    const exactBytes = Buffer.from('24.19.0\r\n\n');
+    await writeFile(path.join(root, '.nvmrc'), exactBytes);
+    await writeFile(path.join(root, 'node_modules/vite/bin/vite.js'), "const fs = require('node:fs'); fs.mkdirSync('build/client', {recursive:true}); fs.writeFileSync('build/client/build-info.json', process.env.JEMECOMPTE_BUILD_INFO);");
+    const git = (args: string[]) => execFileSync('git', args, { cwd: root, stdio: 'pipe' });
+    git(['init', '-q']); git(['-c', 'core.autocrlf=false', 'add', '.']);
+    git(['-c', 'user.name=Release Test', '-c', 'user.email=release-test@example.invalid', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'Clever fixture']);
+    const head = git(['rev-parse', 'HEAD']).toString().trim();
+    const env = { ...process.env, COMMIT_ID: head, GITHUB_SHA: '', GITHUB_REPOSITORY: '', GITHUB_RUN_ID: '', JEMECOMPTE_RELEASE: 'false', ORIGIN: 'https://example.invalid' };
+    const run = (overrides = {}) => spawnSync(process.execPath, ['scripts/build-release.mjs'], { cwd: root, env: { ...env, ...overrides }, encoding: 'utf8' });
+    const clean = run();
+    expect(clean.status, clean.stderr).toBe(0);
+    const expected = JSON.parse(await readFile(path.join(root, MANIFEST_PATH), 'utf8')) as ReleaseManifest;
+    await rm(path.join(root, '.nvmrc'));
+    const recovered = run();
+    expect(recovered.status, recovered.stderr).toBe(0);
+    expect(await readFile(path.join(root, '.nvmrc'))).toEqual(exactBytes);
+    const restored = JSON.parse(await readFile(path.join(root, MANIFEST_PATH), 'utf8')) as ReleaseManifest;
+    expect(restored.sources).toEqual(expected.sources);
+    expect(restored.build.sourceSha256).toBe(expected.build.sourceSha256);
+    expect(restored.build.buildId).toBe(expected.build.buildId);
+    expect(restored.build.workingTree).toBe('clean');
+    expect(restored.build.builder).toBe('clever-cloud');
+
+    await rm(path.join(root, '.nvmrc'));
+    for (const overrides of [{ COMMIT_ID: '' }, { COMMIT_ID: '0'.repeat(40) }, { GITHUB_SHA: head }]) {
+      expect(run(overrides).status).not.toBe(0);
+      await expect(lstat(path.join(root, '.nvmrc'))).rejects.toMatchObject({ code: 'ENOENT' });
+    }
+    await writeFile(path.join(root, '.nvmrc'), 'existing local version\n');
+    expect(run().status).toBe(0);
+    expect(await readFile(path.join(root, '.nvmrc'), 'utf8')).toBe('existing local version\n');
+    await rm(path.join(root, '.nvmrc'));
+    const external = await fixture();
+    await writeFile(path.join(external, 'node-version'), 'preserve symbolic target\n');
+    await symlink(path.join(external, 'node-version'), path.join(root, '.nvmrc'));
+    const symbolic = run();
+    expect(symbolic.status).not.toBe(0);
+    expect(symbolic.stderr).toContain('Symbolic');
+    expect((await lstat(path.join(root, '.nvmrc'))).isSymbolicLink()).toBe(true);
+    expect(await readFile(path.join(external, 'node-version'), 'utf8')).toBe('preserve symbolic target\n');
+    await rm(path.join(root, '.nvmrc'));
+    await writeFile(path.join(root, '.nvmrc'), exactBytes);
+    await rm(path.join(root, 'src/a.ts'));
+    expect(run().status).not.toBe(0);
+    await expect(lstat(path.join(root, 'src/a.ts'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
 });
