@@ -14,6 +14,9 @@ export const POST: RequestHandler = (event) => writeRequest(async () => {
     return privateJson({ status: 'rate_limited', retryAfter: allowance.retryAfter }, 429, allowance.retryAfter);
   }
   const result = await createPublicEvent(payload);
+  if (result.status === 'temporarily_unavailable') {
+    return privateJson(result, 503, 3);
+  }
   // An idempotent retry keeps its original mode. Never redirect a public client
   // to a fixture hidden after activation, or return a real event in test mode.
   if ('event' in result && result.event.isTest !== !realEventsApproved()) {

@@ -121,6 +121,7 @@ async function expectCompleteZoneVisible(page: Page): Promise<void> {
 
 async function chooseCreationPlace(page: Page, mapClick = false): Promise<void> {
   await page.goto('/creer');
+  await page.getByRole('radio', { name: 'Rassemblement localisé', exact: true }).check();
   await expect(page.getByRole('heading', { name: 'Choisissez un lieu public' })).toBeVisible();
   await page.getByLabel('Ville du rassemblement').fill('Paris');
   await page.getByRole('button', { name: 'Chercher', exact: true }).click();
@@ -360,7 +361,7 @@ test('preserves a recovered request across retryable and mode-change rejections 
   expect(await page.evaluate((key) => sessionStorage.getItem(key), EVENT_CREATION_DRAFT_KEY)).not.toBeNull();
   await page.getByRole('button', { name: 'Abandonner cette demande', exact: true }).click();
   await page.getByRole('button', { name: 'Confirmer l’abandon', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Choisissez un lieu public', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Choisissez une ville', exact: true })).toBeVisible();
   expect(await page.evaluate((key) => sessionStorage.getItem(key), EVENT_CREATION_DRAFT_KEY)).toBeNull();
   expect(await geoCalls(page)).toBe(0);
   expect((await pool.query('SELECT 1 FROM events WHERE id=$1', [payload.requestId])).rowCount).toBe(0);
@@ -374,7 +375,7 @@ test('warns before a fresh form when a saved creation request has expired', asyn
   page.on('request', (request) => { if (request.url().endsWith('/api/events/create')) creations += 1; });
   await page.goto('/creer');
   await expect(page.getByText(/Une ancienne demande de création a expiré après 24 heures/)).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Choisissez un lieu public', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Choisissez une ville', exact: true })).toBeVisible();
   expect(await page.evaluate((key) => sessionStorage.getItem(key), EVENT_CREATION_DRAFT_KEY)).toBeNull();
   expect(creations).toBe(0);
 });

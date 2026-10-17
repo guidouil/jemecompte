@@ -3,7 +3,7 @@ import { createEventPayloadSchema } from '../../src/lib/shared/event-creation';
 import { parseCounterSnapshot } from '../../src/lib/client/counter-snapshot';
 
 describe('counting scope boundary', () => {
-  it('does not grant public creators the administrative full-commune scope', () => {
+  it('accepts a whole commune only by its code and never with a creator-supplied perimeter', () => {
     const request = {
       requestId: '5a52252e-28ae-49f6-ab20-98805d61d094', name: 'Lieu public fictif', cityCode: '75056', cityName: 'Paris',
       publicCenter: [2.36,48.86], radiusMeters: 500, durationMinutes: 720, publicLocationConfirmed: true
@@ -11,6 +11,9 @@ describe('counting scope boundary', () => {
     expect(createEventPayloadSchema.safeParse(request).success).toBe(true);
     expect(createEventPayloadSchema.safeParse({ ...request, countingScope: 'city' }).success).toBe(false);
     expect(createEventPayloadSchema.safeParse({ ...request, geofence: { type: 'MultiPolygon', coordinates: [] } }).success).toBe(false);
+    const { publicCenter: _center, radiusMeters: _radius, ...city } = request;
+    expect(createEventPayloadSchema.safeParse({ ...city, countingScope: 'city' }).success).toBe(true);
+    expect(createEventPayloadSchema.safeParse({ ...city, countingScope: 'city', geofence: { type: 'MultiPolygon', coordinates: [] } }).success).toBe(false);
   });
 
   it('rejects an unknown counter scope before displaying a server response', () => {

@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { migrate } from '../../scripts/migrate';
 import { closeDatabase, getPool } from '../../src/lib/server/db/index';
 import { createPublicEvent } from '../../src/lib/server/event-creation';
@@ -15,7 +15,7 @@ if (testUrl && !new URL(testUrl).pathname.endsWith('_test')) throw new Error('TE
 const previousDatabase = process.env.DATABASE_URL;
 const previousApproval = process.env.REAL_EVENTS_APPROVED;
 const fixtureIds: string[] = [];
-function payload(): CreateEventPayload {
+function payload(): Exclude<CreateEventPayload, { countingScope: 'city' }> {
   const requestId = randomUUID();
   fixtureIds.push(requestId);
   return {
@@ -32,6 +32,7 @@ describe.skipIf(!testUrl)('PostgreSQL public event creation', () => {
     await migrate();
   });
   afterEach(async () => {
+    vi.unstubAllGlobals();
     process.env.REAL_EVENTS_APPROVED = 'false';
     for (const id of fixtureIds.splice(0)) {
       await getPool().query('DELETE FROM admin_audit WHERE event_id=$1', [id]);
@@ -64,6 +65,38 @@ describe.skipIf(!testUrl)('PostgreSQL public event creation', () => {
       SELECT (SELECT count(*) FROM presences WHERE event_id=$1)::text AS presences,
         (SELECT count(*) FROM admin_audit WHERE event_id=$1)::text AS audits`, [input.requestId]);
     expect(counts.rows[0]).toEqual({ presences: '0', audits: '0' });
+  });
+
+  it('persists the official whole-commune MultiPolygon and replays it without contacting the provider', async () => {
+    const requestId = randomUUID();
+    fixtureIds.push(requestId);
+    const geofence = { type: 'MultiPolygon', coordinates: [
+      [[[2.2, 48.8], [2.4, 48.8], [2.4, 48.9], [2.2, 48.9], [2.2, 48.8]]],
+      [[[2.5, 48.8], [2.6, 48.8], [2.6, 48.9], [2.5, 48.9], [2.5, 48.8]]]
+    ] };
+    const fetchMock = vi.fn(async () => Response.json({
+      nom: 'Paris', code: '75056', centre: { type: 'Point', coordinates: [2.35, 48.85] }, contour: geofence
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const input = {
+      requestId, name: 'Comptage communal fictif', cityCode: '75056', cityName: 'Nom du navigateur',
+      countingScope: 'city', durationMinutes: 240, publicLocationConfirmed: true
+    };
+    const result = await createPublicEvent(input);
+    if (!('event' in result)) throw new Error(`Unexpected creation status: ${result.status}`);
+    expect(result.status).toBe('created');
+    expect(result.event).toMatchObject({ countingScope: 'city', cityCode: '75056', cityName: 'Paris', geofence });
+    expect(isInsideGeofence(2.3, 48.85, result.event.geofence)).toBe(true);
+    expect(isInsideGeofence(2.55, 48.85, result.event.geofence)).toBe(true);
+    expect(isInsideGeofence(2.45, 48.85, result.event.geofence)).toBe(false);
+    expect((await getCounterSnapshot(requestId))?.total).toBe('0');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock.mockClear();
+    fetchMock.mockRejectedValue(new Error('provider unavailable during replay'));
+    expect(await createPublicEvent(input)).toEqual({ status: 'already_created', event: result.event });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await createPublicEvent({ ...input, durationMinutes: 120 })).toEqual({ status: 'request_conflict' });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it.each([720, 1440, 2880, 4320] as const)('persists exactly %d real minutes and keeps a 72-hour replay immutable', async (durationMinutes) => {
@@ -240,14 +273,14 @@ describe.skipIf(!testUrl)('PostgreSQL public event creation', () => {
       await client.query(`CREATE ROLE ${role} NOLOGIN`);
       await client.query(`GRANT USAGE ON SCHEMA public TO ${role}`);
       await client.query(`GRANT SELECT, UPDATE(updated_at) ON events TO ${role}`);
-      await client.query(`GRANT INSERT(id,slug,name,city_code,city_name,description,geofence,starts_at,ends_at,status,is_test,creation_source,creation_request_hash) ON events TO ${role}`);
+      await client.query(`GRANT INSERT(id,slug,name,city_code,city_name,description,geofence,starts_at,ends_at,status,is_test,creation_source,creation_request_hash,counting_scope) ON events TO ${role}`);
       await client.query(`SET LOCAL ROLE ${role}`);
       const { rows } = await client.query<{ id: string; schedule_valid: boolean }>(`
         WITH decision AS MATERIALIZED (SELECT clock_timestamp() AS instant)
-        INSERT INTO events (id,slug,name,city_code,city_name,geofence,starts_at,ends_at,status,is_test,creation_source,creation_request_hash)
+        INSERT INTO events (id,slug,name,city_code,city_name,geofence,starts_at,ends_at,status,is_test,creation_source,creation_request_hash,counting_scope)
         SELECT $1,$2,'Création fictive','75056','Paris',$3::jsonb,
           COALESCE($5::timestamptz,instant),COALESCE($5::timestamptz,instant)+($6::integer*interval '1 minute'),
-          'published',true,'community',$4 FROM decision
+          'published',true,'community',$4,'city' FROM decision
         ON CONFLICT(id) DO NOTHING RETURNING *,ends_at>clock_timestamp() AS schedule_valid`, [input.requestId, `role-${input.requestId}`,
         JSON.stringify({ type: 'Polygon', coordinates: [[[2.36,48.86],[2.37,48.86],[2.37,48.87],[2.36,48.86]]] }), Buffer.alloc(32, 1),
         '2100-01-01T12:00:00.000Z', 240]);

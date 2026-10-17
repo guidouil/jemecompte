@@ -44,6 +44,7 @@ test('production map remains interactive under CSP, uses same-origin providers a
   }));
   await page.route('**/api/map/tiles/**', (route) => route.fulfill({ contentType: 'image/png', body: tile }));
   const response = await page.goto('/creer');
+  await page.getByRole('radio', { name: 'Rassemblement localisé', exact: true }).check();
   expect(response?.headers()['content-security-policy']).toContain("object-src 'none'");
   await page.getByLabel('Ville du rassemblement').fill('Paris');
   await page.getByRole('button', { name: 'Chercher', exact: true }).click();

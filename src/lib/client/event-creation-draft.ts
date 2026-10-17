@@ -16,7 +16,7 @@ export type DraftLoadResult = { status: 'ready'; draft: EventCreationDraft }
 export type DraftSaveResult = { status: 'saved' | 'unavailable'; draft: EventCreationDraft }
   | { status: 'invalid' };
 
-const payloadKeys = new Set(['requestId', 'name', 'cityCode', 'cityName', 'publicCenter',
+const payloadKeys = new Set(['requestId', 'name', 'cityCode', 'cityName', 'countingScope', 'publicCenter',
   'radiusMeters', 'durationMinutes', 'startsAt', 'publicLocationConfirmed']);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -35,23 +35,29 @@ function publicPayload(value: unknown): CreateEventPayload | undefined {
     typeof value.requestId !== 'string' || !uuid.test(value.requestId) ||
     !text(value.name, 3, 120) || !text(value.cityName, 2, 100) ||
     typeof value.cityCode !== 'string' || !/^[0-9AB]{5}$/.test(value.cityCode) ||
-    !Array.isArray(value.publicCenter) || value.publicCenter.length !== 2 ||
-    !value.publicCenter.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate)) ||
-    Math.abs(value.publicCenter[0]) > 180 || Math.abs(value.publicCenter[1]) > 90 ||
-    typeof value.radiusMeters !== 'number' || !Number.isInteger(value.radiusMeters) ||
-    value.radiusMeters < MIN_EVENT_RADIUS_METERS || value.radiusMeters > MAX_EVENT_RADIUS_METERS ||
     !EVENT_DURATIONS.some((duration) => duration === value.durationMinutes) ||
     value.publicLocationConfirmed !== true) return;
   if (value.startsAt !== undefined && (typeof value.startsAt !== 'string' ||
     !Number.isFinite(Date.parse(value.startsAt)) || new Date(value.startsAt).toISOString() !== value.startsAt)) return;
   // Construct a fresh allowlisted object; never serialize arbitrary caller properties.
-  return {
+  const common = {
     requestId: value.requestId, name: value.name, cityCode: value.cityCode, cityName: value.cityName,
-    publicCenter: [value.publicCenter[0], value.publicCenter[1]], radiusMeters: value.radiusMeters,
     durationMinutes: value.durationMinutes as CreateEventPayload['durationMinutes'],
     ...(value.startsAt !== undefined ? { startsAt: value.startsAt as string } : {}),
-    publicLocationConfirmed: true
+    publicLocationConfirmed: true as const
   };
+  if (value.countingScope === 'city') {
+    if ('publicCenter' in value || 'radiusMeters' in value) return;
+    return { ...common, countingScope: 'city' };
+  }
+  if (('countingScope' in value && value.countingScope !== 'gathering') ||
+    !Array.isArray(value.publicCenter) || value.publicCenter.length !== 2 ||
+    !value.publicCenter.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate)) ||
+    Math.abs(value.publicCenter[0]) > 180 || Math.abs(value.publicCenter[1]) > 90 ||
+    typeof value.radiusMeters !== 'number' || !Number.isInteger(value.radiusMeters) ||
+    value.radiusMeters < MIN_EVENT_RADIUS_METERS || value.radiusMeters > MAX_EVENT_RADIUS_METERS) return;
+  return { ...common, ...(value.countingScope === 'gathering' ? { countingScope: 'gathering' as const } : {}),
+    publicCenter: [value.publicCenter[0], value.publicCenter[1]], radiusMeters: value.radiusMeters };
 }
 
 function storage(provided?: DraftStorage): DraftStorage {

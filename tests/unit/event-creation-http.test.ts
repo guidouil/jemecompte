@@ -9,6 +9,10 @@ const body = {
   requestId: '5a52252e-28ae-49f6-ab20-98805d61d094', name: 'Événement fictif', cityName: 'Paris', cityCode: '75056',
   publicCenter: [2.36,48.86], radiusMeters: 200, durationMinutes: 120, publicLocationConfirmed: true
 };
+const cityBody = {
+  requestId: body.requestId, name: 'Comptage de Paris', cityName: 'Paris', cityCode: '75056',
+  countingScope: 'city', durationMinutes: 240, publicLocationConfirmed: true
+};
 function request(payload: unknown, origin = 'http://localhost'): Parameters<typeof POST>[0] {
   const req = new Request('http://localhost/api/events/create', {
     method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: JSON.stringify(payload)
@@ -31,6 +35,24 @@ describe('public creation endpoint', () => {
     expect(response.status).toBe(201);
     expect(mocked.create).toHaveBeenCalledExactlyOnceWith(body);
     expect(await response.json()).toMatchObject({ status: 'created', event: { id: body.requestId, isTest: true } });
+  });
+  it('accepts a commune code without accepting a browser-supplied circle or geometry', async () => {
+    const response = await POST(request(cityBody));
+    expect(response.status).toBe(201);
+    expect(mocked.create).toHaveBeenCalledExactlyOnceWith(cityBody);
+    mocked.create.mockClear();
+    for (const fields of [
+      { publicCenter: [2.36, 48.86] }, { radiusMeters: 500 },
+      { geofence: { type: 'Polygon', coordinates: [] } }
+    ]) expect((await POST(request({ ...cityBody, ...fields }))).status).toBe(400);
+    expect(mocked.create).not.toHaveBeenCalled();
+  });
+  it('returns a retryable response when the official commune contour is unavailable', async () => {
+    mocked.create.mockResolvedValueOnce({ status: 'temporarily_unavailable' });
+    const response = await POST(request(cityBody));
+    expect(response.status).toBe(503);
+    expect(response.headers.get('retry-after')).toBe('3');
+    expect(await response.json()).toEqual({ status: 'temporarily_unavailable' });
   });
   it('does not create an event without confirmation, with an extra private field or from another origin', async () => {
     expect((await POST(request({ ...body, publicLocationConfirmed: false }))).status).toBe(400);

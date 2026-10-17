@@ -8,8 +8,44 @@ const valid = () => ({
   requestId: randomUUID(), name: 'Rassemblement déclaré', cityName: 'Paris', cityCode: '75056',
   publicCenter: [2.36325, 48.86735], radiusMeters: 200, durationMinutes: 120, publicLocationConfirmed: true
 });
+const validCity = () => ({
+  requestId: randomUUID(), name: 'Comptage de Paris', cityName: 'Paris', cityCode: '75056',
+  countingScope: 'city' as const, durationMinutes: 240, publicLocationConfirmed: true
+});
 
 describe('public event creation contract', () => {
+  it('accepts a whole commune by code without a browser-supplied perimeter', () => {
+    const payload = validCity();
+    expect(createEventPayloadSchema.parse(payload)).toEqual(payload);
+    expect(createEventPayloadSchema.parse({ ...payload, cityName: ' Paris ', startsAt: '2030-07-15T15:30:00+02:00' }))
+      .toEqual({ ...payload, startsAt: '2030-07-15T13:30:00.000Z' });
+  });
+
+  it('rejects client geometry and coordinates on a whole-commune request', () => {
+    const payload = validCity();
+    for (const extra of [
+      { publicCenter: [2.36, 48.86] }, { radiusMeters: 500 },
+      { geofence: { type: 'Polygon', coordinates: [[[2, 48], [3, 48], [3, 49], [2, 48]]] } },
+      { center: [2.36, 48.86] }, { contour: {} }, { latitude: 48.86 }, { anonymousEventId: 'private' }
+    ]) expect(createEventPayloadSchema.safeParse({ ...payload, ...extra }).success).toBe(false);
+    expect(createEventPayloadSchema.safeParse({ ...valid(), countingScope: 'city' }).success).toBe(false);
+  });
+
+  it('requires the commune scope, explicit city selection and publication confirmation', () => {
+    const payload = validCity();
+    for (const replacement of [
+      { countingScope: undefined }, { countingScope: 'gathering' }, { countingScope: 'country' },
+      { cityCode: undefined }, { cityCode: 'Paris' }, { cityName: undefined },
+      { durationMinutes: undefined }, { publicLocationConfirmed: false }, { publicLocationConfirmed: undefined }
+    ]) expect(createEventPayloadSchema.safeParse({ ...payload, ...replacement }).success).toBe(false);
+    expect(createEventPayloadSchema.safeParse({ ...payload, cityCode: '2A004' }).success).toBe(true);
+  });
+
+  it('keeps the explicit gathering scope compatible with the existing radius contract', () => {
+    expect(createEventPayloadSchema.safeParse({ ...valid(), countingScope: 'gathering' }).success).toBe(true);
+    expect(createEventPayloadSchema.safeParse({ ...valid(), countingScope: 'country' }).success).toBe(false);
+  });
+
   it('normalizes only explicit public fields and requires publication confirmation', () => {
     const payload = valid();
     expect(createEventPayloadSchema.parse({ ...payload, name: '  Rassemblement déclaré  ', cityName: ' Paris ' }))
@@ -64,7 +100,8 @@ describe('public event creation contract', () => {
   });
 
   it.each([100, 101, 150, 200, 500, 750, 1234, 9999, 10_000])('accepts an explicitly supplied integer radius of %d meters', (radiusMeters) => {
-    expect(createEventPayloadSchema.parse({ ...valid(), radiusMeters }).radiusMeters).toBe(radiusMeters);
+    const payload = createEventPayloadSchema.parse({ ...valid(), radiusMeters });
+    expect('radiusMeters' in payload && payload.radiusMeters).toBe(radiusMeters);
   });
 
   it.each([0, 99, -200, 10_001, 1234.5, 500.1, NaN, Infinity, -Infinity, '500', null, undefined])(

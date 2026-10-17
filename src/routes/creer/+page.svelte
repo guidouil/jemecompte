@@ -6,7 +6,7 @@
   import { DEFAULT_EVENT_RADIUS_METERS, MIN_EVENT_RADIUS_METERS, MAX_EVENT_RADIUS_METERS, DEFAULT_EVENT_DURATION_MINUTES, EVENT_DURATIONS } from '#lib/shared/event-limits';
   import { parseParisDateTime, parisDateTimeParts, formatEventDateTime } from '#lib/shared/event-schedule';
   import { clearEventCreationDraft, loadEventCreationDraft, saveEventCreationDraft, type EventCreationDraft } from '#lib/client/event-creation-draft';
-  import type { PublicEvent } from '#lib/shared/types';
+  import type { CountingScope, EventGeofence, PublicEvent } from '#lib/shared/types';
   import type { PageData } from './$types';
 
   interface Place { code: string; name: string; center: GeoPoint }
@@ -17,6 +17,10 @@
   let searching = $state(false);
   let placeMessage = $state('');
   let city = $state<Place | null>(null);
+  let countingScope = $state<CountingScope>('city');
+  let cityBoundary = $state<EventGeofence | null>(null);
+  let boundaryLoading = $state(false);
+  let boundaryMessage = $state('');
   let point = $state<GeoPoint | null>(null);
   let view = $state<GeoPoint>([2.347, 48.8589]);
   let radius = $state<number | undefined>(DEFAULT_EVENT_RADIUS_METERS);
@@ -39,6 +43,7 @@
   let online = $state(true);
   let ready = $state(false);
   let searchController: AbortController | undefined;
+  let boundaryController: AbortController | undefined;
   let heading: HTMLHeadingElement;
   const radiusPresets = [500, 1_000, 2_000, 5_000, 10_000];
   const numberFormat = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 });
@@ -64,8 +69,12 @@
   });
   let validSchedule = $derived(scheduleError === '');
   let startsInFuture = $derived(startMode === 'custom' && startInstant !== null && startInstant > now);
+  let isCity = $derived(countingScope === 'city');
+  let validZone = $derived(Boolean(city && (isCity ? cityBoundary && !boundaryLoading : point)));
 
   let nearby = $derived.by(() => {
+    if (isCity) return data.events.filter((event) => event.countingScope === 'city' && event.cityCode === city?.code &&
+      ['published', 'paused'].includes(event.status) && Date.parse(event.endsAt) > now).slice(0, 5);
     if (!point) return [] as PublicEvent[];
     const center = point;
     // A whole-commune participation is distinct from a local gathering, not a duplicate zone.
@@ -80,20 +89,22 @@
       .filter(({ distance, extent }) => distance <= Math.max(1_500, previewRadius + extent))
       .sort((a, b) => a.distance - b.distance).slice(0, 5).map(({ event }) => event);
   });
-  let validDetails = $derived(name.trim().length >= 3 && name.trim().length <= 120 && validRadius && validSchedule);
+  let validDetails = $derived(name.trim().length >= 3 && name.trim().length <= 120 && (isCity || validRadius) && validSchedule);
   // A lost response must remain retryable with its original body, even after its chosen end time.
   let canSubmit = $derived(ready && online && data.serviceAvailable && !submitting && !createdEvent && !confirmAbandon &&
-    (Boolean(pendingBody) || Boolean(point && city) && validDetails && confirmed));
+    (Boolean(pendingBody) || validZone && validDetails && confirmed));
 
   function restoreDraft(draft: EventCreationDraft) {
     const payload = draft.payload;
     pendingDraft = draft;
     name = payload.name;
-    city = { code: payload.cityCode, name: payload.cityName, center: payload.publicCenter };
+    countingScope = payload.countingScope === 'city' ? 'city' : 'gathering';
+    const center = payload.countingScope === 'city' ? view : payload.publicCenter;
+    city = { code: payload.cityCode, name: payload.cityName, center };
     cityQuery = payload.cityName;
-    point = payload.publicCenter;
-    view = payload.publicCenter;
-    radius = payload.radiusMeters;
+    point = payload.countingScope === 'city' ? null : payload.publicCenter;
+    view = center;
+    radius = payload.countingScope === 'city' ? DEFAULT_EVENT_RADIUS_METERS : payload.radiusMeters;
     duration = payload.durationMinutes;
     startMode = payload.startsAt ? 'custom' : 'now';
     if (payload.startsAt) {
@@ -105,6 +116,7 @@
     confirmed = true;
     recoveredRequest = true;
     draftNotice = 'Une demande confirmée a été retrouvée dans cet onglet. Le serveur a peut-être déjà créé ce comptage. Reprenez la même demande pour retrouver sa confirmation ; aucun nouvel envoi n’est automatique.';
+    if (payload.countingScope === 'city') void loadBoundary(city);
   }
 
   onMount(() => {
@@ -123,6 +135,7 @@
     document.addEventListener('visibilitychange', update);
     return () => {
       searchController?.abort();
+      boundaryController?.abort();
       window.clearInterval(timer);
       window.removeEventListener('online', update);
       window.removeEventListener('offline', update);
@@ -153,12 +166,48 @@
   }
 
   function chooseCity(place: Place) {
+    boundaryController?.abort();
+    cityBoundary = null; boundaryMessage = ''; boundaryLoading = false;
     city = place; view = place.center; point = null; places = []; cityQuery = place.name;
-    placeMessage = `${place.name} sélectionnée. Placez maintenant la zone sur un lieu public.`;
+    placeMessage = isCity ? `${place.name} sélectionnée.` : `${place.name} sélectionnée. Placez maintenant la zone sur un lieu public.`;
     confirmed = false;
+    if (isCity) void loadBoundary(place);
   }
 
-  function selectPoint(next: GeoPoint) { if (!pendingBody) { point = next; confirmed = false; } }
+  async function loadBoundary(place: Place) {
+    boundaryController?.abort();
+    const controller = new AbortController();
+    boundaryController = controller;
+    cityBoundary = null; boundaryLoading = true; boundaryMessage = '';
+    const timeout = window.setTimeout(() => controller.abort(), 8_000);
+    try {
+      const response = await fetch(`/api/places/${encodeURIComponent(place.code)}/boundary`, { signal: controller.signal });
+      if (!response.ok) throw new Error('unavailable');
+      const result = await response.json() as Place & { geofence: EventGeofence };
+      if (boundaryController !== controller || city?.code !== place.code || !isCity) return;
+      if (result.code !== place.code || !result.geofence || !['Polygon', 'MultiPolygon'].includes(result.geofence.type)) throw new Error('invalid');
+      cityBoundary = result.geofence;
+      view = result.center;
+      city = { code: result.code, name: pendingBody ? place.name : result.name, center: result.center };
+      boundaryMessage = `Toute la commune de ${city.name} est sélectionnée, selon son contour administratif.`;
+    } catch {
+      if (boundaryController === controller) boundaryMessage = 'Le contour de la commune n’a pas pu être chargé. Réessayez pour sélectionner la ville entière.';
+    } finally {
+      clearTimeout(timeout);
+      if (boundaryController === controller) boundaryLoading = false;
+    }
+  }
+
+  function chooseScope(scope: CountingScope) {
+    if (pendingBody || countingScope === scope) return;
+    boundaryController?.abort(); boundaryController = undefined;
+    countingScope = scope;
+    cityBoundary = null; boundaryLoading = false; boundaryMessage = ''; confirmed = false;
+    placeMessage = city ? isCity ? `${city.name} sélectionnée.` : `${city.name} sélectionnée. Placez maintenant la zone sur un lieu public.` : '';
+    if (isCity && city) void loadBoundary(city);
+  }
+
+  function selectPoint(next: GeoPoint) { if (!pendingBody && !isCity) { point = next; confirmed = false; } }
 
   function formatLength(meters: number): string {
     return meters >= 1_000 ? `${numberFormat.format(meters / 1_000)} km` : `${numberFormat.format(meters)} m`;
@@ -178,7 +227,7 @@
   function moveTo(next: 1 | 2 | 3) {
     if (pendingBody || submitting || createdEvent) return;
     now = Date.now();
-    if (next === 3 && (!validDetails || !point || !city)) {
+    if (next === 3 && (!validDetails || !validZone)) {
       message = scheduleError || 'Vérifiez le nom et le périmètre du comptage.';
       return;
     }
@@ -195,6 +244,8 @@
     confirmAbandon = false;
     createdEvent = null;
     city = null; point = null; name = ''; cityQuery = ''; places = []; placeMessage = '';
+    boundaryController?.abort(); boundaryController = undefined;
+    countingScope = 'city'; cityBoundary = null; boundaryLoading = false; boundaryMessage = '';
     radius = DEFAULT_EVENT_RADIUS_METERS; duration = DEFAULT_EVENT_DURATION_MINUTES;
     startMode = 'now'; startDate = ''; startTime = '';
     confirmed = false; step = 1; message = '';
@@ -210,10 +261,10 @@
       return;
     }
     if (!pendingBody) {
-      if (!city || !point || !validDetails || !confirmed) return;
+      if (!city || !validZone || !validDetails || !confirmed) return;
       const schedule = startMode === 'custom' && parsedStart?.status === 'valid' ? { startsAt: parsedStart.startsAt } : {};
       const saved = saveEventCreationDraft({ requestId: crypto.randomUUID(), name: name.trim(), cityCode: city.code,
-        cityName: city.name, publicCenter: point, radiusMeters: Number(radius), durationMinutes: Number(duration),
+        cityName: city.name, ...(isCity ? { countingScope: 'city' } : { publicCenter: point, radiusMeters: Number(radius) }), durationMinutes: Number(duration),
         ...schedule, publicLocationConfirmed: true }, now);
       if (saved.status === 'invalid') {
         message = 'Vérifiez le nom, la ville et les informations publiques avant de créer le comptage.';
@@ -238,7 +289,7 @@
         draftNotice = '';
         message = Date.parse(result.event.startsAt) > Date.now()
           ? `Comptage créé. Il ouvrira le ${formatEventDateTime(result.event.startsAt)}, heure de Paris.`
-          : 'Comptage créé. Vous pouvez vous compter sur place pendant sa période d’ouverture.';
+          : result.event.countingScope === 'city' ? 'Comptage créé. Vous pouvez déclarer votre participation dans cette commune pendant sa période d’ouverture.' : 'Comptage créé. Vous pouvez vous compter sur place pendant sa période d’ouverture.';
         try { await goto(`/evenements/${result.event.slug}`); }
         catch { message = 'Le comptage est créé. Ouvrez-le avec le lien ci-dessous pour retrouver sa page.'; }
         return;
@@ -252,7 +303,9 @@
         confirmed = false;
         message = result.status === 'invalid_schedule'
           ? 'Ces horaires ne permettent pas d’ouvrir le comptage. Modifiez la date, l’heure de début ou la durée, puis vérifiez de nouveau.'
-          : 'Vérifiez le nom, la ville, le périmètre et les horaires. Ce pilote limite les rayons et les régions proposées à la métropole et aux DROM.';
+          : 'Vérifiez le nom, la ville, le périmètre et les horaires du comptage.';
+      } else if (response.status === 503 && result.status === 'temporarily_unavailable') {
+        message = isCity ? 'Le contour de la commune est momentanément indisponible. Réessayez ici : la même demande est conservée.' : 'Le service est momentanément indisponible. Réessayez ici : la même demande est conservée.';
       } else if (response.status === 429) {
         message = 'Trop de créations ont été demandées. Attendez avant de réessayer ; vérifiez aussi les rassemblements existants.';
       } else if (response.status === 409) {
@@ -272,9 +325,9 @@
 
 <section class="creation-page" aria-labelledby="creation-title">
   <a class="back-link" href="/#rassemblements">← Rechercher un rassemblement</a>
-  <p class="eyebrow">OUVRIR UN COMPTAGE SUR PLACE</p>
-  <h1 id="creation-title">Un lieu.<br />Un comptage collectif<span class="title-dot">.</span></h1>
-  <p class="creation-lead">Commencez par vérifier que votre rassemblement n’existe pas déjà. Créer une zone ne compte encore personne.</p>
+  <p class="eyebrow">OUVRIR UN COMPTAGE</p>
+  <h1 id="creation-title">Une ville. Un lieu.<br />Un comptage collectif<span class="title-dot">.</span></h1>
+  <p class="creation-lead">Choisissez toute une commune ou un lieu de rassemblement. Vérifiez les comptages existants avant d’en créer un autre. Créer une zone ne compte encore personne.</p>
 
   {#if !data.serviceAvailable}<p class="notice" role="status">Le service est momentanément indisponible. Revenez lorsque la connexion au service est rétablie.</p>{/if}
   {#if !online}<p class="notice" role="status">Vous êtes hors ligne. La carte et la création nécessitent une connexion.</p>{/if}
@@ -283,26 +336,34 @@
   {#if storageNotice}<p class="notice" role="status">{storageNotice}</p>{/if}
 
   <ol class="steps" aria-label="Étapes de création">
-    <li aria-current={step === 1 ? 'step' : undefined}><span>01</span> Le lieu</li>
+    <li aria-current={step === 1 ? 'step' : undefined}><span>01</span> Le périmètre</li>
     <li aria-current={step === 2 ? 'step' : undefined}><span>02</span> Le comptage</li>
     <li aria-current={step === 3 ? 'step' : undefined}><span>03</span> Vérifier</li>
   </ol>
 
   <div class="wizard">
-    <div class="wizard-heading"><p class="eyebrow">ÉTAPE {step} SUR 3</p><h2 bind:this={heading} tabindex="-1">{recoveredRequest ? 'Reprendre la même demande' : step === 1 ? 'Choisissez un lieu public' : step === 2 ? 'Délimitez le comptage' : 'Vérifiez avant de publier'}</h2></div>
+    <div class="wizard-heading"><p class="eyebrow">ÉTAPE {step} SUR 3</p><h2 bind:this={heading} tabindex="-1">{recoveredRequest ? 'Reprendre la même demande' : step === 1 ? isCity ? 'Choisissez une ville' : 'Choisissez un lieu public' : step === 2 ? 'Délimitez le comptage' : 'Vérifiez avant de publier'}</h2></div>
 
     {#if step === 1}
-      <p class="guidance">Cherchez votre ville, puis touchez la place ou le lieu du rassemblement sur la carte. Votre GPS n’est pas utilisé pour créer cette zone.</p>
+      <fieldset class="scope-settings">
+        <legend>Périmètre du comptage</legend>
+        <div class="start-options">
+          <label class="start-option" class:selected={isCity}><input type="radio" name="counting-scope" value="city" checked={isCity} disabled={!ready || Boolean(pendingBody)} onchange={() => chooseScope('city')} /><span>Commune entière</span></label>
+          <label class="start-option" class:selected={!isCity}><input type="radio" name="counting-scope" value="gathering" checked={!isCity} disabled={!ready || Boolean(pendingBody)} onchange={() => chooseScope('gathering')} /><span>Rassemblement localisé</span></label>
+        </div>
+      </fieldset>
+      <p class="guidance">{isCity ? 'Cherchez votre ville : son contour administratif sera chargé automatiquement, sans rayon à régler.' : 'Cherchez votre ville, puis touchez la place ou le lieu du rassemblement sur la carte.'} Votre GPS n’est pas utilisé pour créer cette zone.</p>
       <form class="city-search" onsubmit={searchCities}>
-        <label for="city-search">Ville du rassemblement</label>
+        <label for="city-search">{isCity ? 'Ville du comptage' : 'Ville du rassemblement'}</label>
         <div class="search-row"><input id="city-search" bind:value={cityQuery} minlength="2" maxlength="80" required autocomplete="off" placeholder="Ex. Paris, Lyon, Saint-Denis…" /><button class="secondary-button" disabled={!ready || !online || searching || Boolean(pendingBody)} type="submit">{searching ? 'Recherche…' : 'Chercher'}</button></div>
       </form>
       <p class="field-message" role="status">{placeMessage}</p>
       {#if places.length}<ul class="city-results" aria-label="Villes trouvées">{#each places as place (place.code)}<li><button type="button" onclick={() => chooseCity(place)}><strong>{place.name}</strong><small>Code commune {place.code}</small><span aria-hidden="true">↗</span></button></li>{/each}</ul>{/if}
     {:else if step === 2}
-      <p class="guidance">Gardez une zone assez petite pour correspondre au rassemblement. Pour un cortège en mouvement, une zone fixe ne couvre pas tout le parcours.</p>
-      <div class="field"><label for="event-name">Nom public du rassemblement</label><input id="event-name" bind:value={name} minlength="3" maxlength="120" required placeholder="Ex. Rassemblement pour les services publics" aria-describedby="name-help" /><small id="name-help">Un intitulé court, sans nom personnel ni coordonnées de contact.</small></div>
+      <p class="guidance">{isCity ? `Le comptage couvrira toute la commune de ${city?.name}. Aucun rayon ni point sur la carte n’est nécessaire.` : 'Gardez une zone assez petite pour correspondre au rassemblement. Pour un cortège en mouvement, une zone fixe ne couvre pas tout le parcours.'}</p>
+      <div class="field"><label for="event-name">{isCity ? 'Nom public du comptage' : 'Nom public du rassemblement'}</label><input id="event-name" bind:value={name} minlength="3" maxlength="120" required placeholder={isCity ? `Ex. Comptage de ville — ${city?.name}` : 'Ex. Rassemblement pour les services publics'} aria-describedby="name-help" /><small id="name-help">Un intitulé court, sans nom personnel ni coordonnées de contact.</small></div>
       <div class="settings-grid">
+        {#if !isCity}
         <div class="field radius-field">
           <label for="zone-radius">Rayon autour du lieu</label>
           <div class="radius-input"><input id="zone-radius" type="number" inputmode="numeric" min={MIN_EVENT_RADIUS_METERS} max={MAX_EVENT_RADIUS_METERS} step="1" bind:value={radius} required aria-invalid={!validRadius} aria-describedby="radius-help radius-size" /><span aria-hidden="true">mètres</span></div>
@@ -310,6 +371,7 @@
           <div class="radius-presets" role="group" aria-label="Rayons suggérés">{#each radiusPresets as meters (meters)}<button type="button" aria-pressed={radius === meters} onclick={() => { radius = meters; }}>{formatLength(meters)}</button>{/each}</div>
           <small id="radius-size" class:radius-error={!validRadius}>{validRadius ? `Un rayon de ${formatLength(previewRadius)} couvre ${formatLength(previewRadius * 2)} de large.` : 'Indiquez un rayon entier entre 100 et 10 000 mètres pour continuer.'}</small>
         </div>
+        {/if}
         <div class="field"><label for="event-duration">Durée du comptage</label><select id="event-duration" bind:value={duration} aria-describedby="duration-help" aria-invalid={!validDuration}>{#each EVENT_DURATIONS as minutes (minutes)}<option value={minutes}>{minutes / 60} heure{minutes > 60 ? 's' : ''}</option>{/each}</select><small id="duration-help">Heures écoulées depuis le début choisi. Le comptage reste unique sur toute la durée de l’événement, même sur plusieurs jours.</small></div>
       </div>
 
@@ -330,28 +392,35 @@
       </fieldset>
     {:else}
       {#if pendingDraft}<p class="schedule-help">Demande de publication confirmée par vous le {formatEventDateTime(pendingDraft.savedAt)}, heure de Paris. La reprise conserve les informations publiques ci-dessous.</p>{/if}
-      <dl class="review"><div><dt>Rassemblement</dt><dd>{name.trim()}</dd></div><div><dt>Ville déclarée</dt><dd>{city?.name}</dd></div><div><dt>Périmètre public</dt><dd>Cercle de {radius} mètres de rayon</dd></div><div><dt>Début</dt><dd>{startMode === 'now' && pendingBody ? 'En attente de confirmation' : startMode === 'now' ? `Maintenant — environ ${formatEventDateTime(now)}` : startInstant !== null ? formatEventDateTime(startInstant) : 'À préciser'}</dd></div><div><dt>Fin</dt><dd>{startMode === 'now' && pendingBody ? 'En attente de confirmation' : endInstant !== null ? `${startMode === 'now' ? 'Environ ' : ''}${formatEventDateTime(endInstant)}` : 'À préciser'}</dd></div><div><dt>Durée</dt><dd>{Number(duration) / 60} heure{Number(duration) > 60 ? 's' : ''} écoulée{Number(duration) > 60 ? 's' : ''}</dd></div></dl>
+      <dl class="review"><div><dt>{isCity ? 'Comptage' : 'Rassemblement'}</dt><dd>{name.trim()}</dd></div><div><dt>Ville déclarée</dt><dd>{city?.name}</dd></div><div><dt>Périmètre public</dt><dd>{isCity ? `Commune entière de ${city?.name} · contour administratif` : `Cercle de ${radius} mètres de rayon`}</dd></div><div><dt>Début</dt><dd>{startMode === 'now' && pendingBody ? 'En attente de confirmation' : startMode === 'now' ? `Maintenant — environ ${formatEventDateTime(now)}` : startInstant !== null ? formatEventDateTime(startInstant) : 'À préciser'}</dd></div><div><dt>Fin</dt><dd>{startMode === 'now' && pendingBody ? 'En attente de confirmation' : endInstant !== null ? `${startMode === 'now' ? 'Environ ' : ''}${formatEventDateTime(endInstant)}` : 'À préciser'}</dd></div><div><dt>Durée</dt><dd>{Number(duration) / 60} heure{Number(duration) > 60 ? 's' : ''} écoulée{Number(duration) > 60 ? 's' : ''}</dd></div></dl>
       <p class="schedule-help">Heure de Paris (Europe/Paris). {pendingBody ? 'La confirmation est en attente. Réessayez ici pour retrouver les horaires confirmés de la même demande.' : startMode === 'now' ? 'Les horaires affichés sont approximatifs ; le serveur fixera et confirmera le début et la fin exacts à la création.' : startsInFuture ? 'Le comptage sera visible dès sa création et ouvrira à la date choisie. Vous pourrez vous compter à partir de cet horaire.' : 'Le comptage sera déjà en cours à sa création et restera ouvert jusqu’à l’heure de fin indiquée.'}</p>
       <p class="guidance">Le nom, la zone et les horaires seront publics. Votre identité de participant n’est pas publiée. La zone reste fixe après création.</p>
     {/if}
 
     {#if step >= 2 && !pendingBody && scheduleError}<p id="schedule-error" class="schedule-error" role="status">{scheduleError}</p>{/if}
 
-    {#if step >= 2 && validRadius && previewRadius >= 2_000}
+    {#if !isCity && step >= 2 && validRadius && previewRadius >= 2_000}
       <p class="large-zone-note">Cette zone couvre environ <strong>{numberFormat.format(Math.PI * (previewRadius / 1_000) ** 2)} km²</strong>. Elle peut inclure des personnes éloignées du rassemblement. Ajustez le rayon à l’espace réellement concerné.</p>
     {/if}
 
     {#if city}
-      <CreationMap {view} center={point} radius={previewRadius} readonly={step === 3 || Boolean(pendingBody)} onselect={selectPoint} />
-      <p class="zone-status" role="status">{point ? validRadius ? `Zone sélectionnée à ${city.name} · rayon de ${formatLength(previewRadius)}` : 'Précisez un rayon valide pour confirmer le périmètre.' : 'Aucune zone choisie. Touchez le lieu du rassemblement sur la carte.'}</p>
+      {#if isCity}
+        <p class="zone-status" role="status">{boundaryLoading ? 'Chargement du contour de la commune…' : boundaryMessage}</p>
+        {#if !boundaryLoading && !cityBoundary}<button type="button" class="text-button" disabled={!online} onclick={() => city && void loadBoundary(city)}>Réessayer le chargement du contour</button>{/if}
+        {#if cityBoundary}<CreationMap {view} center={null} radius={previewRadius} boundary={cityBoundary} readonly onselect={selectPoint} />{/if}
+        <p class="notice city-scope-notice">Ce comptage couvre toute la commune. Il ne confirme aucun lieu de manifestation et ne prouve pas une participation à une manifestation.</p>
+      {:else}
+        <CreationMap {view} center={point} radius={previewRadius} readonly={step === 3 || Boolean(pendingBody)} onselect={selectPoint} />
+        <p class="zone-status" role="status">{point ? validRadius ? `Zone sélectionnée à ${city.name} · rayon de ${formatLength(previewRadius)}` : 'Précisez un rayon valide pour confirmer le périmètre.' : 'Aucune zone choisie. Touchez le lieu du rassemblement sur la carte.'}</p>
+      {/if}
     {/if}
 
     {#if nearby.length}
-      <aside class="nearby" aria-labelledby="nearby-title"><h3 id="nearby-title">Des comptages existent à proximité</h3><p>Vérifiez leur nom et leurs horaires pour éviter de diviser le même rassemblement.</p>{#each nearby as event (event.id)}<a href={`/evenements/${event.slug}`}><strong>{event.name}</strong><span>{event.cityName} ↗</span></a>{/each}</aside>
+      <aside class="nearby" aria-labelledby="nearby-title"><h3 id="nearby-title">{isCity ? 'Des comptages existent dans cette commune' : 'Des comptages existent à proximité'}</h3><p>Vérifiez leur nom et leurs horaires pour éviter de diviser le même comptage.</p>{#each nearby as event (event.id)}<a href={`/evenements/${event.slug}`}><strong>{event.name}</strong><span>{event.cityName} ↗</span></a>{/each}</aside>
     {/if}
 
     {#if step === 3}
-      <label class="confirmation"><input type="checkbox" bind:checked={confirmed} disabled={Boolean(pendingBody)} /><span>Je confirme que cette zone correspond au rassemblement et j’accepte de publier ce lieu et ces informations.</span></label>
+      <label class="confirmation"><input type="checkbox" bind:checked={confirmed} disabled={Boolean(pendingBody)} /><span>{isCity ? `Je confirme un comptage dans toute la commune de ${city?.name} et j’accepte de publier ce périmètre et ces informations.` : 'Je confirme que cette zone correspond au rassemblement et j’accepte de publier ce lieu et ces informations.'}</span></label>
       <p class="publication-note">Ce comptage sera indiqué « Ouvert par un participant ». Un contrôle GPS effectué dans le navigateur ne certifie pas la présence humaine.</p>
     {/if}
     <p class="submission-message" role="status" aria-live="polite">{message}</p>
@@ -366,8 +435,8 @@
     <div class="wizard-actions">
       {#if step > 1}<button type="button" class="text-button" disabled={submitting || Boolean(pendingBody) || Boolean(createdEvent)} onclick={() => moveTo(step === 3 ? 2 : 1)}>← Modifier {step === 3 ? 'le comptage' : 'le lieu'}</button>{/if}
       {#if createdEvent}<a class="primary-action" href={`/evenements/${createdEvent.slug}`}>Ouvrir le comptage créé <span aria-hidden="true">↗</span></a>
-      {:else if step === 1}<button type="button" class="primary-action" disabled={!city || !point || !ready || !online || !data.serviceAvailable} onclick={() => moveTo(2)}>Continuer <span aria-hidden="true">→</span></button>
-      {:else if step === 2}<button type="button" class="primary-action" disabled={!validDetails || !point} onclick={() => moveTo(3)}>Vérifier le comptage <span aria-hidden="true">→</span></button>
+      {:else if step === 1}<button type="button" class="primary-action" disabled={!validZone || !ready || !online || !data.serviceAvailable} onclick={() => moveTo(2)}>Continuer <span aria-hidden="true">→</span></button>
+      {:else if step === 2}<button type="button" class="primary-action" disabled={!validDetails || !validZone} onclick={() => moveTo(3)}>Vérifier le comptage <span aria-hidden="true">→</span></button>
       {:else}<button type="button" class="primary-action" disabled={!canSubmit} onclick={() => void create()} aria-busy={submitting}>{submitting ? 'Création en cours…' : recoveredRequest ? 'Reprendre la même demande' : pendingBody ? 'Réessayer la création' : 'Créer le comptage'} <span aria-hidden="true">↗</span></button>{/if}
     </div>
     <p class="help-end"><a href="/confidentialite">Comment ces informations sont utilisées</a></p>
@@ -410,8 +479,8 @@
   .radius-presets button { min-height: 44px; padding: 9px 12px; border: 1px solid var(--line); background: transparent; color: var(--ink); font-size: 12px; font-weight: 600; }
   .radius-presets button[aria-pressed=true] { border-color: var(--green); background: var(--soft-green); }
   .field > small.radius-error { color: var(--error); }
-  .start-settings { border: 0; min-width: 0; margin: 27px 0 0; padding: 0; }
-  .start-settings legend { padding: 0; font-size: 13px; font-weight: 700; }
+  .start-settings, .scope-settings { border: 0; min-width: 0; margin: 27px 0 0; padding: 0; }
+  .start-settings legend, .scope-settings legend { padding: 0; font-size: 13px; font-weight: 700; }
   .start-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
   .start-option { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 12px; margin: 0; border: 1px solid var(--line); cursor: pointer; line-height: 1.5; }
   .start-option.selected { border-color: var(--green); background: var(--soft-green); }

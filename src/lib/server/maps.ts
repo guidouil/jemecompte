@@ -1,7 +1,13 @@
+import { isSupportedPublicCenter } from '../shared/event-creation';
+import { MAX_CITY_GEOFENCE_BYTES, validateGeofence } from '../shared/geofence';
+import type { EventGeofence } from '../shared/types';
+
 /** Public cartography only. Never forward client headers, cookies or IP to providers. */
 export interface PublicPlace { code: string; name: string; center: [number, number] }
+export interface PublicPlaceBoundary extends PublicPlace { geofence: EventGeofence }
 interface Cached<T> { value: T; expiresAt: number }
 const places = new Map<string, Cached<PublicPlace[]>>();
+const boundaries = new Map<string, Cached<PublicPlaceBoundary>>();
 const tiles = new Map<string, Cached<Uint8Array>>();
 const pending = new Map<string, Promise<unknown>>();
 let tileBytes = 0;
@@ -72,6 +78,39 @@ export async function searchPublicPlaces(query: string): Promise<PublicPlace[]> 
     if (places.size >= 128) places.delete(places.keys().next().value!);
     places.set(key, { value: result, expiresAt: Date.now() + 3_600_000 });
     return result;
+  });
+}
+
+/** A commune code selects a fixed official resource; client geometry is never accepted. */
+export async function getPublicPlaceBoundary(code: string): Promise<PublicPlaceBoundary> {
+  if (!/^[0-9AB]{5}$/.test(code)) throw new MapUnavailable();
+  const cached = boundaries.get(code);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  return external(`boundary:${code}`, async () => {
+    try {
+      const url = new URL(`https://geo.api.gouv.fr/communes/${code}`);
+      url.search = new URLSearchParams({ fields: 'nom,code,centre,contour' }).toString();
+      const response = await fetch(url, { signal: AbortSignal.timeout(6_000), redirect: 'error', headers: { accept: 'application/json' } });
+      // Geometry has its own 250 KiB budget; allow only a little extra for public metadata.
+      const bytes = await readBounded(response, MAX_CITY_GEOFENCE_BYTES + 2_048);
+      const data: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+      if (!data || typeof data !== 'object' || Array.isArray(data)) throw new MapUnavailable();
+      const item = data as Record<string, unknown>;
+      const centre = item.centre as { type?: unknown; coordinates?: unknown } | null | undefined;
+      const point = centre?.coordinates;
+      if (item.code !== code || typeof item.nom !== 'string' || item.nom.trim().length < 2 || item.nom.length > 100 ||
+          /[\p{Cc}\p{Cf}<>]/u.test(item.nom) || centre?.type !== 'Point' || !Array.isArray(point) || point.length !== 2 ||
+          !point.every((part) => typeof part === 'number' && Number.isFinite(part)) ||
+          !isSupportedPublicCenter(point as [number, number])) throw new MapUnavailable();
+      const geofence = validateGeofence(item.contour, 'city');
+      const result: PublicPlaceBoundary = { code, name: item.nom.trim(), center: [point[0], point[1]], geofence };
+      // At most 8 MiB of validated contours, independently of tile/search caches.
+      if (boundaries.size >= 32) boundaries.delete(boundaries.keys().next().value!);
+      boundaries.set(code, { value: result, expiresAt: Date.now() + 24 * 3_600_000 });
+      return result;
+    } catch {
+      throw new MapUnavailable();
+    }
   });
 }
 

@@ -1,4 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MultiPolygon, Polygon } from 'geojson';
+
+const boundary: Polygon = {
+  type: 'Polygon', coordinates: [[[2.2, 48.8], [2.4, 48.8], [2.4, 48.9], [2.2, 48.9], [2.2, 48.8]]]
+};
+const island: Polygon = {
+  type: 'Polygon', coordinates: [[[2.5, 48.8], [2.6, 48.8], [2.6, 48.9], [2.5, 48.9], [2.5, 48.8]]]
+};
+const officialPlace = (contour: Polygon | MultiPolygon = boundary) => ({
+  nom: 'Paris', code: '75056', centre: { type: 'Point', coordinates: [2.347, 48.8589] }, contour
+});
 
 beforeEach(() => vi.resetModules());
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
@@ -37,6 +48,63 @@ describe('public cartography gateway', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('[]', { headers: { 'content-length': '24001' } })));
     const { searchPublicPlaces } = await import('../../src/lib/server/maps');
     await expect(searchPublicPlaces('Paris')).rejects.toBeInstanceOf(Error);
+  });
+  it('loads a validated whole-commune contour from the fixed official endpoint and shares its cache', async () => {
+    const fetchMock = vi.fn(async () => Response.json(officialPlace()));
+    vi.stubGlobal('fetch', fetchMock);
+    const { getPublicPlaceBoundary } = await import('../../src/lib/server/maps');
+    const results = await Promise.all([getPublicPlaceBoundary('75056'), getPublicPlaceBoundary('75056')]);
+    expect(results[0]).toEqual({ code: '75056', name: 'Paris', center: [2.347, 48.8589], geofence: boundary });
+    expect(results[1]).toEqual(results[0]);
+    expect(await getPublicPlaceBoundary('75056')).toEqual(results[0]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const call = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(call[0].origin).toBe('https://geo.api.gouv.fr');
+    expect(call[0].pathname).toBe('/communes/75056');
+    expect([...call[0].searchParams.keys()]).toEqual(['fields']);
+    expect(call[0].searchParams.get('fields')?.split(',').sort()).toEqual(['centre', 'code', 'contour', 'nom']);
+    expect(call[1].headers).toEqual({ accept: 'application/json' });
+    expect(call[1].redirect).toBe('error');
+  });
+  it('retains each island of an official MultiPolygon without replacing it with a circle or bounding box', async () => {
+    const geofence: MultiPolygon = { type: 'MultiPolygon', coordinates: [boundary.coordinates, island.coordinates] };
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json(officialPlace(geofence))));
+    const { getPublicPlaceBoundary } = await import('../../src/lib/server/maps');
+    expect((await getPublicPlaceBoundary('75056')).geofence).toEqual(geofence);
+  });
+  it.each(['', 'Paris', '75056/../59000', '75056?fields=private', 'https://other.invalid', '750560'])
+    ('rejects an invalid commune code %s without contacting a provider', async (code) => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      const { getPublicPlaceBoundary } = await import('../../src/lib/server/maps');
+      await expect(getPublicPlaceBoundary(code)).rejects.toBeInstanceOf(Error);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  it.each([
+    { code: '59000' }, { nom: '<script>' }, { nom: 'x'.repeat(121) },
+    { centre: { type: 'Point', coordinates: [2, null] } },
+    { centre: { type: 'Point', coordinates: [181, 48] } },
+    { contour: undefined }, { contour: { type: 'MultiPolygon', coordinates: [] } },
+    { contour: { type: 'Polygon', coordinates: [[[2, 48], [3, 48], [3, 49]]] } },
+    { contour: { type: 'Polygon', coordinates: [[[2, 48], [3, 49], [2, 49], [3, 48], [2, 48]]] } }
+  ])('rejects an untrusted or malformed official-boundary response and allows a later retry', async (replacement) => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ ...officialPlace(), ...replacement }))
+      .mockImplementation(async () => Response.json(officialPlace()));
+    vi.stubGlobal('fetch', fetchMock);
+    const { getPublicPlaceBoundary } = await import('../../src/lib/server/maps');
+    await expect(getPublicPlaceBoundary('75056')).rejects.toBeInstanceOf(Error);
+    expect((await getPublicPlaceBoundary('75056')).geofence).toEqual(boundary);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+  it.each([
+    () => new Response('{}', { headers: { 'content-length': '2000000' } }),
+    () => new Response(' '.repeat(2_000_000)),
+    () => new Response('{}', { status: 503 }),
+    () => new Response('<html>provider failure</html>')
+  ])('bounds and validates boundary responses before caching them', async (response) => {
+    vi.stubGlobal('fetch', vi.fn(async () => response()));
+    const { getPublicPlaceBoundary } = await import('../../src/lib/server/maps');
+    await expect(getPublicPlaceBoundary('75056')).rejects.toBeInstanceOf(Error);
   });
   it('serves validated PNG tiles from a bounded shared cache', async () => {
     const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0]);

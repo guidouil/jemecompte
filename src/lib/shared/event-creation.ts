@@ -26,22 +26,30 @@ const publicText = (minimum: number, maximum: number) => z.string()
   .transform((value) => value.trim())
   .pipe(z.string().min(minimum).max(maximum));
 
-export const createEventPayloadSchema = z.object({
+const commonPublicFields = {
   requestId: z.uuid().transform((value) => value.toLowerCase()),
   name: publicText(3, 120),
   cityName: publicText(2, 100),
   cityCode: z.string().regex(/^[0-9AB]{5}$/),
-  publicCenter: z.tuple([z.number().finite(), z.number().finite()])
-    .refine(isSupportedPublicCenter, 'Choisissez un lieu dans une des zones françaises prises en charge.'),
-  radiusMeters: z.number().int().min(MIN_EVENT_RADIUS_METERS).max(MAX_EVENT_RADIUS_METERS),
   durationMinutes: z.literal(EVENT_DURATIONS),
   startsAt: z.iso.datetime({ offset: true })
     .refine((value) => Number.isFinite(Date.parse(value)), 'Choisissez une date de début valide.')
     .transform((value) => new Date(value).toISOString()).optional(),
   publicLocationConfirmed: z.literal(true)
-}).strict();
+};
+
+export const createEventPayloadSchema = z.union([
+  z.object({
+    ...commonPublicFields,
+    countingScope: z.literal('gathering').optional(),
+    publicCenter: z.tuple([z.number().finite(), z.number().finite()])
+      .refine(isSupportedPublicCenter, 'Choisissez un lieu dans une des zones françaises prises en charge.'),
+    radiusMeters: z.number().int().min(MIN_EVENT_RADIUS_METERS).max(MAX_EVENT_RADIUS_METERS)
+  }).strict(),
+  z.object({ ...commonPublicFields, countingScope: z.literal('city') }).strict()
+]);
 
 export type CreateEventPayload = z.infer<typeof createEventPayloadSchema>;
 export type CreateEventReply =
   | { status: 'created' | 'already_created'; event: PublicEvent }
-  | { status: 'request_conflict' | 'invalid_schedule' };
+  | { status: 'request_conflict' | 'invalid_schedule' | 'temporarily_unavailable' };

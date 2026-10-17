@@ -29,7 +29,7 @@
   <p class="eyebrow">CONFIDENTIALITÉ</p>
   <h1>Compter.<br />Sans vous suivre.</h1>
   <p class="information-lead">Vous pouvez vous compter sans compte, sans donner votre nom, votre adresse e-mail ou votre numéro de téléphone. Votre position précise reste dans votre navigateur.</p>
-  <p class="policy-date">Dernière mise à jour : <time datetime="2026-10-16">16 octobre 2026</time></p>
+  <p class="policy-date">Dernière mise à jour : <time datetime="2026-10-17">17 octobre 2026</time></p>
 
   <aside class="privacy-summary" aria-label="Les engagements essentiels">
     <p><strong>Pas de GPS enregistré.</strong> La vérification de votre position se fait sur votre appareil, sans suivi continu.</p>
@@ -107,9 +107,9 @@
 
   <section class="prose-section" aria-labelledby="creation">
     <h2 id="creation">Si vous créez un rassemblement</h2>
-    <p>Vous placez vous-même un point sur la carte et confirmez sa publication. La création ne demande pas votre GPS et ne reprend pas la position utilisée pour une recherche de proximité. <strong>Le lieu et les informations saisis deviennent publics.</strong> Choisissez un lieu public et ne renseignez pas d’adresse privée ou d’informations personnelles sur d’autres personnes. Créer un événement ne vous compte pas automatiquement.</p>
-    <p>Les recherches de communes passent par notre serveur vers l’API Découpage administratif (<a href="https://geo.api.gouv.fr/decoupage-administratif/communes" rel="noreferrer">geo.api.gouv.fr</a>) et le fond de carte provient de l’<a href="https://geoservices.ign.fr/" rel="noreferrer">IGN</a>. Ces fournisseurs reçoivent l’IP de notre serveur ainsi que la commune recherchée ou les références des tuiles demandées, sans transmission directe de votre IP. Notre infrastructure peut, elle, voir la zone de carte demandée.</p>
-    <p>Les réponses sont mises en cache en mémoire sur le serveur : validité d’une heure pour les communes et de 24 heures pour les tuiles. Les entrées peuvent rester en mémoire jusqu’à leur remplacement, leur éviction ou un redémarrage. Ces caches ne contiennent pas d’identifiant de participant.</p>
+    <p>Vous choisissez une commune entière avec son contour administratif, ou placez un point public sur la carte pour un rassemblement localisé, puis confirmez la publication. La création ne demande pas votre GPS et ne reprend pas la position utilisée pour une recherche de proximité. <strong>Le lieu et les informations saisis deviennent publics.</strong> Choisissez un lieu public et ne renseignez pas d’adresse privée ou d’informations personnelles sur d’autres personnes. Créer un événement ne vous compte pas automatiquement.</p>
+    <p>Les recherches de communes et le chargement de leurs contours administratifs passent par notre serveur vers l’API Découpage administratif (<a href="https://geo.api.gouv.fr/decoupage-administratif/communes" rel="noreferrer">geo.api.gouv.fr</a>) et le fond de carte provient de l’<a href="https://geoservices.ign.fr/" rel="noreferrer">IGN</a>. Ces fournisseurs reçoivent l’IP de notre serveur ainsi que la commune recherchée ou les références des tuiles demandées, sans transmission directe de votre IP. Notre infrastructure peut, elle, voir la zone de carte demandée.</p>
+    <p>Les réponses sont mises en cache en mémoire sur le serveur : validité d’une heure pour les recherches de communes, de 24 heures pour leurs contours et pour les tuiles. Les entrées peuvent rester en mémoire jusqu’à leur remplacement, leur éviction ou un redémarrage. Ces caches ne contiennent pas d’identifiant de participant.</p>
   </section>
 
   <section class="prose-section" aria-labelledby="limites">

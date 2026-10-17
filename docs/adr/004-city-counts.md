@@ -4,17 +4,17 @@ Le 16 octobre 2026, l'utilisateur choisit de conserver la création communautair
 
 ## Modèle et lecture des chiffres
 
-`counting_scope` distingue `gathering` (valeur des événements existants et des créations publiques) et `city` (commune entière préparée par administration). La distinction est une donnée explicite ; elle n'est déduite ni du nom ni de l'origine team/community. La migration additive `0003_counting_scope.sql` précède l'utilisation de ce code.
+`counting_scope` distingue `gathering` (rassemblement localisé, valeur des anciens événements et des créations publiques avec rayon) et `city` (commune entière préparée par administration ou créée publiquement). La distinction est une donnée explicite ; elle n'est déduite ni du nom ni de l'origine team/community. La migration additive `0003_counting_scope.sql` précède l'utilisation de ce code.
 
 Une déclaration dans toute la commune ne démontre aucune présence à une manifestation : une personne chez elle peut satisfaire le périmètre. Les pages, résultats, boutons, QR et affiches nomment donc la commune entière et une fenêtre de comptage, sans présenter de lieu de manifestation confirmé. Les agrégats nationaux et municipaux filtrent à la fois le mode test/réel et la portée. L'accueil affiche deux familles distinctes, sans les additionner. L'unicité reste attachée à l'événement ; elle ne devient pas une unicité humaine entre familles ou entre communes.
 
 ## Géographie et parcours
 
-Les 20 contours administratifs API Geo sont conservés sans simplification. Une commune peut être un Polygon ou un MultiPolygon, avec toutes ses portions disjointes. Les limites historiques des rassemblements restent 500 sommets et 50 Kio ; la portée communale administrative est bornée à 10 000 sommets au total et 250 Kio, sans trous ni recouvrement. Le formulaire public ne peut demander cette portée ni fournir de contour administratif arbitraire.
+Les 20 contours administratifs API Geo sont conservés sans simplification. Une commune peut être un Polygon ou un MultiPolygon, avec toutes ses portions disjointes. Les limites historiques des rassemblements restent 500 sommets et 50 Kio ; la portée communale administrative est bornée à 10 000 sommets au total et 250 Kio, sans trous ni recouvrement. Depuis le 17 octobre, le formulaire public propose cette portée par défaut. Il envoie uniquement le code de commune et les informations publiques confirmées ; le serveur charge et valide le contour officiel, sans accepter de géométrie client. L'aperçu charge ce même contour via `/api/places/:code/boundary`. Un rejeu déjà créé ne dépend pas de la disponibilité du fournisseur.
 
 Depuis l'accueil, même un unique périmètre communal correspondant au GPS demande un choix avant identité et soumission. Un lien communal affiche la portée avant son bouton explicite. La requête d'admission communale doit inclure `countingScope: "city"` : les anciennes PWA ne peuvent pas admettre silencieusement une commune avec leur ancien libellé de rassemblement. GPS, précision et limites de confidentialité restent inchangés.
 
-La création communautaire reste accessible. Les suggestions anti-doublon du formulaire excluent les comptages communaux, qui ont une autre portée ; le créateur peut toujours délimiter son rassemblement localisé.
+La création communautaire reste accessible. En mode commune entière, les suggestions proposent les comptages actifs ou futurs de cette commune. En mode rassemblement localisé, elles excluent les comptages communaux, qui ont une autre portée ; le créateur peut toujours délimiter son rassemblement localisé.
 
 ## Lot et exploitation
 

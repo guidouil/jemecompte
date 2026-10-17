@@ -33,7 +33,7 @@ La purge des sauvegardes/WAL reste une configuration d'exploitation à vérifier
 
 La migration additive `0001_community_events.sql` distingue `creation_source=team|community` et conserve un hash SHA-256 des seuls champs publics d'une création communautaire. Le `requestId` aléatoire devient l'UUID de l'événement. Un rejeu normalisé identique retrouve l'événement ; une configuration différente avec ce même UUID est un conflit, sans réécriture. Aucun identifiant participant, créateur, IP ou secret local n'est associé à cette opération. Le hash n'est pas publié dans l'API.
 
-`POST /api/events/create` reçoit une confirmation explicite de publication du centre choisi, un nom, une commune/code déclarés, un rayon réglable entre 100 et 10 000 m et une durée parmi 1/2/4/8/12/24/48/72 h. L'interface propose 500 m par défaut. Il ouvre immédiatement un événement à partir de l'heure PostgreSQL, sans présence et sans ligne d'audit d'opérateur. La fin correspond aux heures écoulées depuis cet instant : 72 h représentent trois fois 24 h. Le passage à minuit ne remet à zéro ni le compteur d'événement ni la contrainte d'unicité événement/identifiant ; une même identité locale reste comptée une seule fois sur toute la durée. Sans approbation réelle, l'événement est une démonstration explicitement nommée ; le rejeu reste une démonstration même après changement du drapeau.
+`POST /api/events/create` accepte aussi `countingScope: city` avec code de commune, nom, horaires et confirmation explicite, sans centre, rayon ni géométrie client. Le serveur charge le nom et le contour administratif officiels ; le rejeu déjà créé reste possible sans fournisseur cartographique. Pour un rassemblement localisé, il reçoit une confirmation explicite de publication du centre choisi, un nom, une commune/code déclarés, un rayon réglable entre 100 et 10 000 m et une durée parmi 1/2/4/8/12/24/48/72 h. L'interface propose 500 m par défaut. Il ouvre immédiatement un événement à partir de l'heure PostgreSQL, sans présence et sans ligne d'audit d'opérateur. La fin correspond aux heures écoulées depuis cet instant : 72 h représentent trois fois 24 h. Le passage à minuit ne remet à zéro ni le compteur d'événement ni la contrainte d'unicité événement/identifiant ; une même identité locale reste comptée une seule fois sur toute la durée. Sans approbation réelle, l'événement est une démonstration explicitement nommée ; le rejeu reste une démonstration même après changement du drapeau.
 
 Ces coordonnées sont celles du **lieu public choisi pour l'événement**, distinctes du relevé privé de participation. Les bounding boxes métropole/DROM sont approximatives et ne vérifient ni une frontière nationale exacte ni la correspondance entre nom de commune, code et centre ; un appelant direct peut déclarer des métadonnées fausses. Les événements communautaires sont identifiés comme tels. La création ne prouve ni l'existence d'une manifestation ni l'autorité de son créateur.
 
@@ -44,7 +44,7 @@ Le rôle public reçoit en plus un droit `INSERT` limité aux colonnes nécessai
 ```sql
 GRANT INSERT (
   id, slug, name, city_code, city_name, description, geofence, starts_at,
-  ends_at, status, is_test, creation_source, creation_request_hash
+  ends_at, status, is_test, creation_source, creation_request_hash, counting_scope
 ) ON events TO jemecompte_public;
 ```
 

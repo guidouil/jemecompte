@@ -3,26 +3,29 @@
   import type { Map, LayerGroup } from 'leaflet';
   import 'leaflet/dist/leaflet.css';
   import { circlePolygon, type GeoPoint } from '#lib/shared/geo';
+  import type { EventGeofence } from '#lib/shared/types';
 
   interface Props {
     view: GeoPoint;
     center: GeoPoint | null;
     radius: number;
+    boundary?: EventGeofence | null;
     readonly?: boolean;
     onselect: (point: GeoPoint) => void;
   }
-  let { view, center, radius, readonly = false, onselect }: Props = $props();
+  let { view, center, radius, boundary = null, readonly = false, onselect }: Props = $props();
   let container: HTMLDivElement;
   let map: Map | undefined;
   let zone: LayerGroup | undefined;
   let leaflet: typeof import('leaflet') | undefined;
   let renderedRadius: number | undefined;
   let renderedReadonly = false;
+  let renderedBoundary: EventGeofence | null | undefined;
   let ready = $state(false);
   let failed = $state(false);
   let tilesFailed = $state(false);
   let tilesReady = $state(false);
-  let publicPolygon = $derived(center ? circlePolygon(center, radius) : null);
+  let publicPolygon = $derived(boundary ?? (center ? circlePolygon(center, radius) : null));
 
   function selectMapCenter() {
     const point = map?.getCenter();
@@ -37,7 +40,7 @@
       map = library.map(container, { zoomControl: false, scrollWheelZoom: false, minZoom: 5, maxZoom: 19,
         worldCopyJump: false, maxBounds: [[-85, -180], [85, 180]], preferCanvas: false });
       map.setView([view[1], view[0]], 13);
-      map.getContainer().setAttribute('aria-label', 'Carte du lieu public. Déplacez la carte avec les flèches, puis utilisez le bouton Placer au centre.');
+      map.getContainer().setAttribute('aria-label', boundary ? 'Carte du contour administratif de la commune entière.' : 'Carte du lieu public. Déplacez la carte avec les flèches, puis utilisez le bouton Placer au centre.');
       library.control.zoom({ zoomInTitle: 'Agrandir la carte', zoomOutTitle: 'Réduire la carte' }).addTo(map);
       map.attributionControl.setPrefix(false);
       const tiles = library.tileLayer('/api/map/tiles/{z}/{x}/{y}', {
@@ -65,21 +68,24 @@
     const polygon = publicPolygon;
     const meters = radius;
     const reviewing = readonly;
+    const commune = boundary;
     if (!ready || !zone || !leaflet) return;
     const radiusChanged = renderedRadius !== undefined && renderedRadius !== meters;
     const enteringReview = reviewing && !renderedReadonly;
+    const boundaryChanged = renderedBoundary !== commune;
     renderedRadius = meters;
     renderedReadonly = reviewing;
+    renderedBoundary = commune;
     // These effects synchronize Leaflet's external DOM; no component state is derived by assignment.
     zone.clearLayers();
-    if (point && polygon) {
+    if (polygon) {
       const outline = leaflet.geoJSON(polygon, {
-        style: { color: '#125b39', weight: 3, fillColor: '#42b976', fillOpacity: 0.22 }, interactive: false
+        style: { color: '#125b39', weight: 3, fillColor: '#42b976', fillOpacity: 0.22, className: commune ? 'creation-city-boundary' : 'creation-gathering-boundary' }, interactive: false
       }).addTo(zone);
-      leaflet.circleMarker([point[1], point[0]], { radius: 6, color: '#fff', weight: 2,
+      if (point && !commune) leaflet.circleMarker([point[1], point[0]], { radius: 6, color: '#fff', weight: 2,
         fillColor: '#125b39', fillOpacity: 1, interactive: false }).addTo(zone);
       // Repositioning the point only redraws the zone; preserve the user's zoom and viewport.
-      if (radiusChanged || enteringReview) {
+      if (radiusChanged || enteringReview || (commune && boundaryChanged)) {
         map?.fitBounds(outline.getBounds(), { padding: reviewing ? [30, 30] : [22, 22], maxZoom: 17, animate: false });
       }
     }
@@ -89,12 +95,13 @@
 <div class="map-wrapper">
   <div class="creation-map" bind:this={container}></div>
   {#if !ready}<p class="map-message" role="status">{failed ? 'La carte n’a pas pu être chargée. Vérifiez votre connexion puis rechargez cette page.' : 'Chargement de la carte…'}</p>{/if}
-  {#if tilesFailed}<p class="tile-warning" role="status">Le fond de carte est indisponible. Attendez son retour pour choisir le lieu avec précision.</p>{/if}
+  {#if tilesFailed}<p class="tile-warning" role="status">{boundary ? 'Le fond de carte est indisponible. Le contour de la commune reste visible.' : 'Le fond de carte est indisponible. Attendez son retour pour choisir le lieu avec précision.'}</p>{/if}
 </div>
 {#if !readonly}
   <button type="button" class="secondary-button map-center-button" disabled={!ready || !tilesReady || tilesFailed} onclick={selectMapCenter}>Placer la zone au centre de la carte <span aria-hidden="true">＋</span></button>
   <p class="map-help">Touchez un lieu public pour placer la zone. Au clavier : flèches pour déplacer la carte, + et − pour zoomer, puis « Placer la zone au centre ».</p>
 {/if}
+{#if boundary}<p class="map-help">Le contour vert couvre toute la commune, y compris ses territoires disjoints. Aucun point ni rayon à choisir.</p>{/if}
 
 <style>
   .map-wrapper { position: relative; margin-top: 18px; border: 1px solid var(--line); isolation: isolate; background: #e5e9e1; }
