@@ -55,7 +55,7 @@
 </script>
 
 <section class="event-perimeter" aria-labelledby={`${uid}-heading`}>
-  <div class="perimeter-header"><h3 id={`${uid}-heading`}>Zone de comptage</h3><button type="button" class="text-button" onclick={toggle} disabled={!ready} aria-expanded={expanded} aria-controls={`${uid}-map-panel`}>{expanded ? 'Masquer le périmètre' : 'Voir le périmètre'} <span aria-hidden="true">{expanded ? '−' : '+'}</span></button></div>
+  <div class="perimeter-header"><h2 id={`${uid}-heading`}>Zone de comptage</h2><button type="button" class="text-button" onclick={toggle} disabled={!ready} aria-expanded={expanded} aria-controls={`${uid}-map-panel`}>{expanded ? 'Masquer le périmètre' : 'Voir le périmètre'} <span aria-hidden="true">{expanded ? '−' : '+'}</span></button></div>
   <p class="perimeter-summary">{#if event.countingScope === 'city'}Toute la commune · contour administratif{:else if summary.kind === 'circle' && summary.approximateRadiusMeters !== null}Rayon approx. : {formatLength(summary.approximateRadiusMeters)}{:else}Périmètre personnalisé{/if}{#if summary.approximateAreaSquareMeters !== null}<span class="summary-separator" aria-hidden="true"> · </span>Superficie approx. : {formatArea(summary.approximateAreaSquareMeters)}{/if}</p>
   <p class="position-note">Votre position n’est pas affichée sur cette carte.</p>
   <div id={`${uid}-map-panel`} hidden={!expanded}>
@@ -72,7 +72,7 @@
 <style>
   .event-perimeter { margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--line); }
   .perimeter-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 15px; }
-  .perimeter-header h3 { font-size: 13px; font-weight: 700; margin: 0; }
+  .perimeter-header h2 { font-size: 13px; font-weight: 700; margin: 0; }
   .perimeter-header .text-button { display: inline-flex; align-items: center; gap: 9px; font-size: 12px; }
   .perimeter-summary, .position-note { color: var(--muted); font-size: 12px; line-height: 1.7; }
   .position-note { margin-top: 4px; }

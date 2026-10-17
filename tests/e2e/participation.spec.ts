@@ -161,6 +161,8 @@ test('mobile pages are accessible and contain no horizontal overflow', async ({ 
     await page.goto(path);
     const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
     expect(result.violations).toEqual([]);
+    const headings = await new AxeBuilder({ page }).withRules(['heading-order']).analyze();
+    expect(headings.violations).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }
   await page.emulateMedia({ colorScheme: 'dark' });
