@@ -8,7 +8,10 @@
   },
   "scripts": {
     "dev": "node --env-file-if-exists=.env node_modules/vite/bin/vite.js dev --host 127.0.0.1",
-    "build": "vite build",
+    "build": "node scripts/build-release.mjs",
+    "release:package": "node scripts/package-release.mjs",
+    "release:verify": "node scripts/verify-release.mjs",
+    "release:verify-site": "node scripts/verify-site.mjs",
     "preview": "node --env-file-if-exists=.env scripts/preview.mjs",
     "start": "node --env-file-if-exists=.env build",
     "prepare": "svelte-kit sync",
@@ -28,6 +31,7 @@
     "test:load": "node --env-file-if-exists=.env --import tsx scripts/load-smoke.ts"
   },
   "dependencies": {
+    "@noble/hashes": "2.0.1",
     "@turf/boolean-point-in-polygon": "7.4.0",
     "@turf/kinks": "7.4.0",
     "drizzle-orm": "0.45.4",

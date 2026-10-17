@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RequestEvent } from '@sveltejs/kit';
 import { z } from 'zod';
-import { readPrivateJson, RequestFailure, writeRequest } from '../../src/lib/server/http';
-import { withReadBudget } from '../../src/lib/server/abuse';
+import { guardPeer, privateRequest as handlePrivateRequest, readPrivateJson, RequestFailure, writeRequest } from '../../src/lib/server/http';
+import { limiter, readLimiter, withReadBudget } from '../../src/lib/server/abuse';
 import { operationalMetrics } from '../../src/lib/server/observability';
 
 function eventFor(request: Request): RequestEvent {
-  return { request, url: new URL(request.url) } as RequestEvent;
+  return { request, url: new URL(request.url), params: { id: 'ea935eb8-2a5f-4802-b7be-5c2ec116c71a' }, getClientAddress: () => 'http-tests-peer' } as unknown as RequestEvent;
 }
 function privateRequest(body: BodyInit): Request {
   return new Request('http://localhost/api/events/test/presences', {
@@ -19,6 +19,85 @@ beforeEach(() => vi.stubEnv('ORIGIN', 'http://localhost'));
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 describe('bounded HTTP handling', () => {
+  it('keeps read traffic and admission quotas independent for the same shared network', () => {
+    vi.useFakeTimers(); vi.setSystemTime(1_000);
+    const event = { getClientAddress: () => 'crowd-network-read-budget' } as RequestEvent;
+    for (let i = 0; i < 120; i++) guardPeer(event, 'crowd-event', 'read');
+    expect(() => guardPeer(event, 'crowd-event', 'read')).toThrow(RequestFailure);
+    expect(() => guardPeer(event, 'crowd-event')).not.toThrow();
+    const other = { getClientAddress: () => 'crowd-network-write-budget' } as RequestEvent;
+    for (let i = 0; i < 120; i++) guardPeer(other, 'crowd-event');
+    expect(() => guardPeer(other, 'crowd-event')).toThrow(RequestFailure);
+    expect(() => guardPeer(other, 'crowd-event', 'read')).not.toThrow();
+  });
+  it('uses explicit read network quotas for statuses while challenges retain admission quotas despite database reads', async () => {
+    vi.spyOn(readLimiter, 'allow').mockReturnValue(false);
+    const writeQuota = vi.spyOn(limiter, 'allow').mockReturnValue(true);
+    const schema = z.object({ ok: z.boolean() });
+    const work = async () => new Response(null, { status: 204 });
+    expect((await handlePrivateRequest(eventFor(privateRequest('{"ok":true}')), schema, work,
+      { readOnly: true, peerBudget: 'read' })).status).toBe(429);
+    expect((await handlePrivateRequest(eventFor(privateRequest('{"ok":true}')), schema, work,
+      { scope: 'admission', readOnly: true })).status).toBe(204);
+    expect(writeQuota).toHaveBeenCalledWith('peer', 'admission', 'http-tests-peer');
+  });
+  it('cancels disconnected bodies promptly and removes their abort listeners', async () => {
+    const controller = new AbortController();
+    let cancelled = false;
+    const request = new Request(privateRequest(new ReadableStream<Uint8Array>({ cancel() { cancelled = true; } })), {
+      signal: controller.signal
+    });
+    const removeListener = vi.spyOn(request.signal, 'removeEventListener');
+    const work = vi.fn(async () => new Response(null));
+    const response = handlePrivateRequest(eventFor(request), z.unknown(), work);
+    controller.abort();
+    expect((await response).status).toBe(408);
+    expect(cancelled).toBe(true);
+    expect(removeListener).toHaveBeenCalledWith('abort', expect.any(Function));
+    expect(work).not.toHaveBeenCalled();
+    expect((await handlePrivateRequest(eventFor(privateRequest('{}')), z.unknown(), work)).status).toBe(200);
+  });
+  it('isolates slow-body parsing from database slots and from another network', async () => {
+    vi.useFakeTimers();
+    const schema = z.object({ ok: z.boolean() }).strict();
+    const work = vi.fn(async () => new Response(null, { status: 204 }));
+    const pending = Array.from({ length: 8 }, () => handlePrivateRequest(
+      eventFor(privateRequest(new ReadableStream<Uint8Array>())), schema, work
+    ));
+    const sameNetwork = await handlePrivateRequest(eventFor(privateRequest('{"ok":true}')), schema, work);
+    expect(sameNetwork.status).toBe(429);
+    const anotherNetwork = {
+      ...eventFor(privateRequest('{"ok":true}')), getClientAddress: () => 'another-http-peer'
+    } as RequestEvent;
+    expect((await handlePrivateRequest(anotherNetwork, schema, work)).status).toBe(204);
+    expect((await writeRequest(async () => new Response(null, { status: 204 }))).status).toBe(204);
+    expect(work).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect((await Promise.all(pending)).every((response) => response.status === 408)).toBe(true);
+    expect((await handlePrivateRequest(eventFor(privateRequest('{"ok":true}')), schema, work)).status).toBe(204);
+  });
+  it('bounds parsing globally while keeping database capacity available and releases every parser', async () => {
+    vi.useFakeTimers();
+    const schema = z.object({ ok: z.boolean() }).strict();
+    const pending = Array.from({ length: 128 }, (_, index) => handlePrivateRequest({
+      ...eventFor(privateRequest(new ReadableStream<Uint8Array>())), getClientAddress: () => `parser-peer-${Math.floor(index / 8)}`
+    } as RequestEvent, schema, async () => new Response(null)));
+    expect((await handlePrivateRequest(eventFor(privateRequest('{"ok":true}')), schema, async () => new Response(null))).status).toBe(503);
+    expect((await writeRequest(async () => new Response(null, { status: 204 }))).status).toBe(204);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect((await Promise.all(pending)).every((response) => response.status === 408)).toBe(true);
+    expect((await handlePrivateRequest(eventFor(privateRequest('{"ok":true}')), schema, async () => new Response(null))).status).toBe(200);
+  });
+  it('keeps status reads available when all database write slots are occupied', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const pending = Array.from({ length: 128 }, () => writeRequest(async () => { await gate; return new Response(null); }));
+    try {
+      const response = await handlePrivateRequest(eventFor(privateRequest('{"ok":true}')), z.object({ ok: z.boolean() }),
+        async () => new Response(null, { status: 204 }), { readOnly: true });
+      expect(response.status).toBe(204);
+    } finally { release(); await Promise.all(pending); }
+  });
   it('releases the admission slot after a body that never finishes', async () => {
     vi.useFakeTimers();
     let cancelled = false;
@@ -27,7 +106,7 @@ describe('bounded HTTP handling', () => {
       await readPrivateJson(eventFor(privateRequest(body)), z.object({ ok: z.boolean() }).strict());
       return new Response(null);
     });
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(3_000);
     expect((await response).status).toBe(408);
     expect(cancelled).toBe(true);
     expect((await writeRequest(async () => new Response('ready'))).status).toBe(200);

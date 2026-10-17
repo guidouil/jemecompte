@@ -51,13 +51,23 @@ export const actions: Actions = {
     if (typeof eventId !== 'string' || typeof confirmation !== 'string' || confirmation.length > 100) {
       return fail(400, { error: 'La confirmation de suppression est invalide.' });
     }
+    const release = adminLoginLimiter.acquire(event.getClientAddress(), Date.now(), 'delete');
+    if (!release) {
+      event.setHeaders({ 'retry-after': '60' });
+      return fail(429, { error: 'Trop de tentatives. Patientez une minute avant de réessayer.', failedEventId: eventId, confirmation });
+    }
     try {
+      if (!await verifyAdminPassword(form?.get('adminPassword'))) {
+        return fail(400, { error: 'Mot de passe incorrect. La suppression nécessite une nouvelle confirmation du mot de passe.', failedEventId: eventId, confirmation });
+      }
+      // The session can expire or be revoked while the body or password is being verified.
+      if (!adminAuthenticated(event.cookies)) return fail(401, { error: 'Votre session a expiré. Reconnectez-vous.' });
       const result = await deleteAdminEvent(eventId, confirmation, { operator: 'gui-owner', reason: 'Suppression confirmée depuis l’espace privé.' });
       if (result.status === 'confirmation_mismatch') return fail(400, { error: 'Le texte de confirmation ne correspond pas au comptage.', failedEventId: eventId, confirmation });
       if (result.status === 'not_found') return fail(404, { error: 'Ce comptage a déjà été supprimé ou n’existe plus.', failedEventId: eventId, confirmation });
       return { message: 'Le comptage, toutes ses participations et ses compteurs ont été supprimés.', deletedId: eventId };
     } catch {
       return fail(503, { error: 'La suppression n’a pas pu être confirmée. Actualisez la liste avant de réessayer.', failedEventId: eventId, confirmation });
-    }
+    } finally { release(); }
   }
 };

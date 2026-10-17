@@ -55,7 +55,7 @@ describe.skipIf(!testUrl)('private event deletion on PostgreSQL', () => {
   });
   afterEach(async () => {
     for (const controller of controllers.splice(0)) controller.abort();
-    for (const table of ['admin_audit', 'presences', 'event_counters'] as const) {
+    for (const table of ['admin_audit', 'presences', 'supports', 'event_counters', 'support_counters'] as const) {
       await getPool().query(`DELETE FROM ${table} WHERE event_id=ANY($1::uuid[])`, [ids]);
     }
     await getPool().query('DELETE FROM admin_audit WHERE operator=$1', [actor.operator]);
@@ -85,7 +85,8 @@ describe.skipIf(!testUrl)('private event deletion on PostgreSQL', () => {
     expect(new Set(all.map((event) => event.isTest))).toEqual(new Set([true, false]));
     expect(new Set(all.map((event) => event.countingScope))).toEqual(new Set(['gathering', 'city']));
     expect(Object.keys(all[0]!).sort()).toEqual([
-      'id', 'slug', 'name', 'cityName', 'startsAt', 'endsAt', 'status', 'isTest', 'countingScope', 'totalCount', 'retainedPresences'
+      'id', 'slug', 'name', 'cityName', 'startsAt', 'endsAt', 'status', 'isTest', 'countingScope',
+      'presenceCount', 'supportCount', 'totalCount', 'retainedPresences', 'retainedSupports'
     ].sort());
     expect((await listAdminEvents({ q: `${tag}%' OR true --` })).events).toEqual([]);
   });
@@ -103,11 +104,11 @@ describe.skipIf(!testUrl)('private event deletion on PostgreSQL', () => {
     const survivorBefore = (await publicCounterSnapshot(survivor.id))!;
     expect(survivorBefore.nationalTotal).toBe(String(before));
     const controller = new AbortController(); controllers.push(controller);
-    const response = await counterStream(target.id, controller.signal);
+    const response = await counterStream(target.id, controller.signal, 'integration-test-peer');
     const reader = response!.body!.getReader();
     await reader.read();
     const survivorController = new AbortController(); controllers.push(survivorController);
-    const survivorResponse = await counterStream(survivor.id, survivorController.signal);
+    const survivorResponse = await counterStream(survivor.id, survivorController.signal, 'integration-test-peer');
     const survivorReader = survivorResponse!.body!.getReader();
     await survivorReader.read();
     expect(await deleteAdminEvent(target.id, ` ${target.slug}`, actor)).toEqual({ status: 'confirmation_mismatch' });
@@ -140,6 +141,22 @@ describe.skipIf(!testUrl)('private event deletion on PostgreSQL', () => {
     expect((await listAdminEvents({ q: target.slug })).events[0]).toMatchObject({ totalCount: '42', retainedPresences: '0', isTest: true });
     expect(await deleteAdminEvent(target.id, target.slug, actor)).toMatchObject({ status: 'deleted', removedCount: '42', deletedPresences: '0', deletedCounterRows: 1 });
     expect(await remaining(target.id)).toEqual({ events: '0', presences: '0', counters: '0', audits: '0' });
+  });
+
+  it('includes supports in administrative totals and removes their data in the audited deletion', async () => {
+    const target = await fixture();
+    await getPool().query(`INSERT INTO event_counters(event_id,counting_day,count,revision)
+      VALUES($1,'2026-10-17',42,42)`, [target.id]);
+    await getPool().query(`INSERT INTO support_counters(event_id,counting_day,count,revision)
+      VALUES($1,'2026-10-17',7,7)`, [target.id]);
+    await getPool().query(`INSERT INTO supports(event_id,anonymous_event_id,counting_day)
+      VALUES($1,$2,'2026-10-17')`, [target.id, randomBytes(32)]);
+    expect((await listAdminEvents({ q: target.slug })).events[0]).toMatchObject({
+      totalCount: '49', presenceCount: '42', supportCount: '7', retainedPresences: '0', retainedSupports: '1'
+    });
+    expect(await deleteAdminEvent(target.id, target.slug, actor)).toMatchObject({ status: 'deleted' });
+    const audit = (await getPool().query("SELECT configuration FROM admin_audit WHERE operator=$1 AND action='delete_event'", [actor.operator])).rows[0];
+    expect(audit.configuration).toMatchObject({ removedCount: '42', removedSupportCount: '7', deletedSupports: '1', deletedSupportCounterRows: 1 });
   });
 
   it('rolls all deletion and audit detachment back if recording the final audit fails', async () => {

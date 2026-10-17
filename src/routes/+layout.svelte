@@ -32,6 +32,7 @@
     <nav aria-label="Informations">
       <a href="/comment-ca-marche">Méthode & limites</a>
       <a href="/confidentialite">Confidentialité</a>
+      <a href="/transparence">Transparence du code</a>
       <a href="https://github.com/guidouil/jemecompte" target="_blank" rel="noopener noreferrer" aria-label="Code source sur GitHub (nouvel onglet)">Code source</a>
     </nav>
     <p class="footer-note">Protocole ouvert.<br /> Fait par <a href="https://x.com/guidouil" target="_blank" rel="noopener noreferrer" aria-label="Profil X de @guidouil (nouvel onglet)">@guidouil</a></p>

@@ -1,5 +1,7 @@
 # JeMeCompte.fr — plan du MVP
 
+> Mise à jour du 17 octobre 2026 : l’[ADR 006](docs/adr/006-anonymous-admission-and-provenance.md) remplace le choix initial sans challenge et précise les protections implémentées, leur coût, la confidentialité et la preuve de provenance. Les limitations de comptage déclaratif restent applicables.
+
 Document de décision et d’implémentation, rédigé le 16 octobre 2026. Le répertoire a été inspecté : il est vide, sans application, dépendance ni configuration existante. Ce document est le seul livrable de cette phase. Les chemins mentionnés ci-dessous désignent des fichiers futurs.
 
 **Proposition : un monolithe SvelteKit, PostgreSQL, une clé aléatoire locale, une géofence vérifiée dans le navigateur et des compteurs transactionnels diffusés par SSE.** Pas de fingerprinting, PostGIS, Redis, application native ou comptage crédité hors ligne pour le pilote.

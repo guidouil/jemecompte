@@ -4,6 +4,11 @@ import { getEventIdentity } from '../../src/lib/client/identity';
 import { locateEvents, LocationError } from '../../src/lib/client/geolocation';
 import type { CounterSnapshot, FlowState, PublicEvent } from '../../src/lib/shared/types';
 
+vi.mock('../../src/lib/client/admission', async (original) => ({
+  ...await original<typeof import('../../src/lib/client/admission')>(),
+  getAdmissionProof: vi.fn().mockResolvedValue({ token: 'synthetic-work-token', nonce: 7 })
+}));
+
 vi.mock('../../src/lib/client/identity', async (original) => ({
   ...await original<typeof import('../../src/lib/client/identity')>(),
   getEventIdentity: vi.fn()
@@ -89,7 +94,8 @@ describe('participation flow', () => {
     const [path, init] = fetchMock.mock.calls[0]!;
     expect(path).toBe(`/api/events/${eventId}/presences`);
     expect(JSON.parse(init.body)).toEqual({
-      anonymousEventId: identity, geofenceVersion: 1, protocolVersion: 1, insideZone: true
+      anonymousEventId: identity, geofenceVersion: 1, protocolVersion: 1, insideZone: true,
+      admission: { token: 'synthetic-work-token', nonce: 7 }
     });
     expect(init.cache).toBe('no-store');
     resolveResponse(reply({ status: 'counted', snapshot: snapshot() }));
@@ -131,7 +137,8 @@ describe('participation flow', () => {
     await flow.select(city.id);
     expect(locateEvents).toHaveBeenCalledTimes(1);
     expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({
-      anonymousEventId: identity, geofenceVersion: 1, protocolVersion: 1, insideZone: true, countingScope: 'city'
+      anonymousEventId: identity, geofenceVersion: 1, protocolVersion: 1, insideZone: true, countingScope: 'city',
+      admission: { token: 'synthetic-work-token', nonce: 7 }
     });
     expect(states.at(-1)?.phase).toBe('counted');
   });

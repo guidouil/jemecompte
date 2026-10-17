@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 // actual loopback origin so native form CSRF checks exercise the production code.
 const fixtureOrigin = 'http://127.0.0.1:5176';
 const steps = [
-  ['node_modules/vite/bin/vite.js', 'build'],
+  ['scripts/build-release.mjs'],
   ['node_modules/@playwright/test/cli.js', 'test', '--config=playwright.production.config.ts', ...process.argv.slice(2)]
 ];
 for (const args of steps) {

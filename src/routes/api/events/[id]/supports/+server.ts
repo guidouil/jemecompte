@@ -1,16 +1,18 @@
 import type { RequestHandler } from './$types';
 import { supportPayloadSchema } from '#lib/shared/contracts';
 import { registerSupport } from '#lib/server/participation';
-import { guardIdentity, guardPeer, parseEventId, privateJson, readPrivateJson, writeRequest } from '#lib/server/http';
+import { guardIdentity, privateJson, privateRequest } from '#lib/server/http';
+import { withAdmission } from '#lib/shared/admission';
+import { verifyAdmission } from '#lib/server/admission';
+import { recordAdmissionEvent } from '#lib/server/integrity-metrics';
 import { record } from '#lib/server/observability';
 import { realEventsApproved } from '#lib/server/db/index';
 
-export const POST: RequestHandler = (event) => writeRequest(async () => {
-  const id = parseEventId(event.params.id);
-  guardPeer(event, id);
-  const payload = await readPrivateJson(event, supportPayloadSchema);
+export const POST: RequestHandler = (event) => privateRequest(event, withAdmission(supportPayloadSchema), async ({ payload, admission }, id) => {
   guardIdentity(id, payload.anonymousEventId);
-  const result = await registerSupport(id, payload, !realEventsApproved());
+  const verified = verifyAdmission(admission, 'support', id, payload);
+  if (!verified) { recordAdmissionEvent(id, 'proof_rejected'); return privateJson({ status: 'admission_required' }, 409); }
+  const result = await registerSupport(id, payload, !realEventsApproved(), verified);
   if (result.status === 'supported' || result.status === 'already_supported' || result.status === 'already_present') {
     return privateJson(result);
   }

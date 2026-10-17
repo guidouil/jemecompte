@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { migrate } from '../../scripts/migrate';
 import { closeDatabase, getPool } from '../../src/lib/server/db/index';
 import { createPublicEvent } from '../../src/lib/server/event-creation';
@@ -9,6 +9,17 @@ import { publicCatalogue } from '../../src/lib/server/public-data';
 import { registerPresence } from '../../src/lib/server/participation';
 import { isInsideGeofence } from '../../src/lib/shared/geofence';
 import type { CreateEventPayload } from '../../src/lib/shared/event-creation';
+import { getPublicPlaceBoundary } from '../../src/lib/server/maps';
+
+vi.mock('../../src/lib/server/maps', () => ({ getPublicPlaceBoundary: vi.fn() }));
+const boundaryMock = vi.mocked(getPublicPlaceBoundary);
+const officialBoundary = {
+  code: '75056', name: 'Paris', center: [2.35, 48.85] as [number, number],
+  geofence: { type: 'MultiPolygon' as const, coordinates: [
+    [[[2.2, 48.8], [2.4, 48.8], [2.4, 48.9], [2.2, 48.9], [2.2, 48.8]]],
+    [[[2.5, 48.8], [2.6, 48.8], [2.6, 48.9], [2.5, 48.9], [2.5, 48.8]]]
+  ] }
+};
 
 const testUrl = process.env.TEST_DATABASE_URL;
 if (testUrl && !new URL(testUrl).pathname.endsWith('_test')) throw new Error('TEST_DATABASE_URL must name a dedicated database ending in _test.');
@@ -25,6 +36,7 @@ function payload(): Exclude<CreateEventPayload, { countingScope: 'city' }> {
 }
 
 describe.skipIf(!testUrl)('PostgreSQL public event creation', () => {
+  beforeEach(() => { boundaryMock.mockReset(); boundaryMock.mockResolvedValue(officialBoundary); });
   beforeAll(async () => {
     process.env.DATABASE_URL = testUrl;
     process.env.REAL_EVENTS_APPROVED = 'false';
@@ -74,10 +86,7 @@ describe.skipIf(!testUrl)('PostgreSQL public event creation', () => {
       [[[2.2, 48.8], [2.4, 48.8], [2.4, 48.9], [2.2, 48.9], [2.2, 48.8]]],
       [[[2.5, 48.8], [2.6, 48.8], [2.6, 48.9], [2.5, 48.9], [2.5, 48.8]]]
     ] };
-    const fetchMock = vi.fn(async () => Response.json({
-      nom: 'Paris', code: '75056', centre: { type: 'Point', coordinates: [2.35, 48.85] }, contour: geofence
-    }));
-    vi.stubGlobal('fetch', fetchMock);
+    boundaryMock.mockResolvedValueOnce({ ...officialBoundary, geofence: { ...geofence, type: 'MultiPolygon' } });
     const input = {
       requestId, name: 'Comptage communal fictif', cityCode: '75056', cityName: 'Nom du navigateur',
       countingScope: 'city', durationMinutes: 240, publicLocationConfirmed: true
@@ -90,13 +99,29 @@ describe.skipIf(!testUrl)('PostgreSQL public event creation', () => {
     expect(isInsideGeofence(2.55, 48.85, result.event.geofence)).toBe(true);
     expect(isInsideGeofence(2.45, 48.85, result.event.geofence)).toBe(false);
     expect((await getCounterSnapshot(requestId))?.total).toBe('0');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    fetchMock.mockClear();
-    fetchMock.mockRejectedValue(new Error('provider unavailable during replay'));
+    expect(boundaryMock).toHaveBeenCalledTimes(1);
+    boundaryMock.mockClear();
+    boundaryMock.mockRejectedValue(new Error('provider unavailable during replay'));
     expect(await createPublicEvent(input)).toEqual({ status: 'already_created', event: result.event });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(boundaryMock).not.toHaveBeenCalled();
     expect(await createPublicEvent({ ...input, durationMinutes: 120 })).toEqual({ status: 'request_conflict' });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(boundaryMock).not.toHaveBeenCalled();
+  });
+
+  it('uses the official gathering municipality and rejects a mismatching public center without inserting', async () => {
+    const outside = { ...payload(), publicCenter: [2.45, 48.85] as [number, number] };
+    expect(await createPublicEvent(outside)).toEqual({ status: 'invalid_location' });
+    expect(await getEventById(outside.requestId)).toBeNull();
+    const inside = { ...payload(), cityName: 'Nom arbitraire du navigateur' };
+    const result = await createPublicEvent(inside);
+    expect(result).toMatchObject({ status: 'created', event: { cityCode: '75056', cityName: 'Paris', countingScope: 'gathering' } });
+    // Preserve existing public metadata on replay, including names from earlier releases.
+    await getPool().query("UPDATE events SET city_name='Ancien nom déclaré' WHERE id=$1", [inside.requestId]);
+    const stored = await getEventById(inside.requestId);
+    boundaryMock.mockClear();
+    boundaryMock.mockRejectedValue(new Error('provider unavailable during gathering replay'));
+    expect(await createPublicEvent(inside)).toEqual({ status: 'already_created', event: stored });
+    expect(boundaryMock).not.toHaveBeenCalled();
   });
 
   it.each([720, 1440, 2880, 4320] as const)('persists exactly %d real minutes and keeps a 72-hour replay immutable', async (durationMinutes) => {

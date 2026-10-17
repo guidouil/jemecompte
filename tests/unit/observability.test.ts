@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { limiter } from '../../src/lib/server/abuse';
+import { readLimiter } from '../../src/lib/server/abuse';
 import { operationalMetrics, recordHttpResponse } from '../../src/lib/server/observability';
 
 const mocked = vi.hoisted(() => ({ counterStream: vi.fn(), StreamUnavailable: class extends Error {} }));
@@ -15,6 +15,18 @@ function streamRequest(id = eventId): Parameters<typeof GET>[0] {
 beforeEach(() => mocked.counterStream.mockReset());
 
 describe('bounded operational HTTP metrics', () => {
+  it('reports a per-network stream quota as rate limited without a server error', async () => {
+    const before = operationalMetrics();
+    mocked.counterStream.mockRejectedValueOnce(Object.assign(new mocked.StreamUnavailable(), { peerLimited: true }));
+    const response = await GET(streamRequest());
+    expect(response.status).toBe(429);
+    expect(response.headers.get('retry-after')).toBe('5');
+    const after = operationalMetrics();
+    expect(after.httpResponses.stream['429'] - before.httpResponses.stream['429']).toBe(1);
+    expect(after.unavailable).toBe(before.unavailable);
+    expect(after.server_error).toBe(before.server_error);
+    expect(JSON.stringify(after)).not.toContain('PRIVATE_SENTINEL');
+  });
   it('counts successful stream admission without reading or retaining the stream body', async () => {
     const before = operationalMetrics();
     mocked.counterStream.mockResolvedValue(new Response('PRIVATE_SENTINEL', {
@@ -23,7 +35,7 @@ describe('bounded operational HTTP metrics', () => {
     const event = streamRequest();
     const response = await GET(event);
     expect(response.status).toBe(200);
-    expect(mocked.counterStream).toHaveBeenCalledExactlyOnceWith(eventId, event.request.signal);
+    expect(mocked.counterStream).toHaveBeenCalledExactlyOnceWith(eventId, event.request.signal, 'PRIVATE_SENTINEL');
     const after = operationalMetrics();
     expect(after.httpResponses.stream['2xx'] - before.httpResponses.stream['2xx']).toBe(1);
     expect(after.unavailable).toBe(before.unavailable);
@@ -59,7 +71,7 @@ describe('bounded operational HTTP metrics', () => {
     mocked.counterStream.mockResolvedValue(null);
     expect((await GET(streamRequest())).status).toBe(404);
     expect((await GET(streamRequest('invalid-id'))).status).toBe(404);
-    vi.spyOn(limiter, 'allow').mockReturnValue(false);
+    vi.spyOn(readLimiter, 'allow').mockReturnValue(false);
     const limited = await GET(streamRequest());
     expect(limited.status).toBe(429);
     expect(limited.headers.get('retry-after')).toBe('2');

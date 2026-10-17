@@ -6,6 +6,8 @@ import type {
 import { decodeAnonymousEventId, getPool, isEventId, realEventsApproved, transaction } from './db';
 import { getCounterSnapshot, readCounterSnapshot } from './counters';
 import type { EventRow } from './events';
+import { consumeAdmission, type VerifiedAdmission } from './admission';
+import { recordAdmissionEvent } from './integrity-metrics';
 
 interface DecisionClock { counting_day: string; started: boolean; ended: boolean }
 
@@ -40,7 +42,8 @@ function eventAdmissionStatus(event: EventRow): AdmissionStatus | null {
   return null;
 }
 
-export async function registerPresence(eventId: string, payload: ParticipationPayload, isTest?: boolean): Promise<ParticipationReply> {
+// Network callers must supply verified work. The optional argument supports trusted internal maintenance/tests.
+export async function registerPresence(eventId: string, payload: ParticipationPayload, isTest?: boolean, admission?: VerifiedAdmission): Promise<ParticipationReply> {
   const anonymousId = decodeAnonymousEventId(payload?.anonymousEventId);
   if (!isEventId(eventId) || !anonymousId || payload.protocolVersion !== 1 || payload.insideZone !== true ||
       !Number.isInteger(payload.geofenceVersion) || payload.geofenceVersion < 1 ||
@@ -49,6 +52,7 @@ export async function registerPresence(eventId: string, payload: ParticipationPa
     return { status: 'invalid_request' };
   }
 
+  let converted = false;
   const status = await transaction<AdmissionStatus>(async (client) => {
     const { rows } = await client.query<EventRow>(
       "SELECT * FROM events WHERE id = $1 AND status <> 'draft' FOR SHARE", [eventId]);
@@ -70,6 +74,7 @@ export async function registerPresence(eventId: string, payload: ParticipationPa
       if (!decision.started) return 'not_open';
       if (decision.ended) return 'ended';
       await client.query('SAVEPOINT presence_admission');
+      if (admission && !await consumeAdmission(client, admission)) return 'admission_required';
       const inserted = await client.query(`
         INSERT INTO presences (event_id, anonymous_event_id, counting_day) VALUES ($1, $2, $3::date)
         ON CONFLICT (event_id, anonymous_event_id) DO NOTHING RETURNING event_id`, [eventId, anonymousId, decision.counting_day]);
@@ -100,10 +105,17 @@ export async function registerPresence(eventId: string, payload: ParticipationPa
         continue;
       }
       await client.query('RELEASE SAVEPOINT presence_admission');
+      converted = Boolean(removed.rows[0]);
       return 'counted';
     }
     return 'temporarily_unavailable';
   });
+  // Record after COMMIT, before the snapshot: a lost reply must not hide an admission.
+  if (status === 'counted') {
+    recordAdmissionEvent(eventId, 'presence');
+    if (converted) recordAdmissionEvent(eventId, 'conversion');
+  }
+  if (status === 'admission_required') recordAdmissionEvent(eventId, 'proof_rejected');
   if (status === 'not_found') return { status };
   const snapshot = await getCounterSnapshot(eventId, isTest);
   return snapshot ? { status, snapshot } : { status: 'not_found' };
@@ -115,7 +127,7 @@ function validDay(value: unknown): value is string {
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
-export async function registerSupport(eventId: string, payload: SupportPayload, isTest?: boolean): Promise<SupportReply> {
+export async function registerSupport(eventId: string, payload: SupportPayload, isTest?: boolean, admission?: VerifiedAdmission): Promise<SupportReply> {
   const anonymousId = decodeAnonymousEventId(payload?.anonymousEventId);
   const anonymousDayId = decodeAnonymousEventId(payload?.anonymousDayId);
   if (!isEventId(eventId) || !anonymousId || !anonymousDayId || !validDay(payload?.day) || payload.protocolVersion !== 1 ||
@@ -159,6 +171,10 @@ export async function registerSupport(eventId: string, payload: SupportPayload, 
       return afterClaim.ended ? 'ended' : 'day_changed';
     }
     if (!claim.rowCount) return 'daily_limit_reached';
+    if (admission && !await consumeAdmission(client, admission)) {
+      await client.query('ROLLBACK TO SAVEPOINT support_admission');
+      return 'admission_required';
+    }
     const inserted = await client.query(`
       INSERT INTO supports(event_id, anonymous_event_id, counting_day) VALUES($1,$2,$3::date)
       ON CONFLICT (event_id, anonymous_event_id) DO NOTHING RETURNING event_id`, [eventId, anonymousId, payload.day]);
@@ -178,6 +194,8 @@ export async function registerSupport(eventId: string, payload: SupportPayload, 
     await client.query('RELEASE SAVEPOINT support_admission');
     return 'supported';
   });
+  if (status === 'supported') recordAdmissionEvent(eventId, 'support');
+  if (status === 'admission_required') recordAdmissionEvent(eventId, 'proof_rejected');
   if (status === 'not_found') return { status };
   const snapshot = await getCounterSnapshot(eventId, isTest);
   return snapshot ? { status, snapshot } : { status: 'not_found' };

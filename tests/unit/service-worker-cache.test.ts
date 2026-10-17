@@ -30,6 +30,13 @@ describe('private backoffice cache boundary', () => {
     expect(shouldHandlePublicRequest(request('/gui', method), origin, staticPaths)).toBe(false);
   });
 
+  it.each(['/api/version', '/api/version?nonce=1', '/%61pi/version', '/transparence', '/transparence/__data.json'])('never caches live provenance %s, including a static allowlist mistake', (path) => {
+    const allowlisted = new Set([new URL(path, origin).pathname]);
+    expect(shouldHandlePublicRequest(request(path), origin, allowlisted)).toBe(false);
+    expect(shouldStorePublicResponse(request(path), response(path), origin, allowlisted)).toBe(false);
+    expect(shouldStorePublicResponse(request('/'), response(path), origin, staticPaths)).toBe(false);
+  });
+
   it('does not store a public request redirected to a private page or marked no-store', () => {
     expect(shouldStorePublicResponse(request('/'), response('/gui'), origin, staticPaths)).toBe(false);
     expect(shouldStorePublicResponse(request('/'), response('/gui/login'), origin, staticPaths)).toBe(false);
@@ -56,7 +63,7 @@ describe('private backoffice cache boundary', () => {
     const old = `${PUBLIC_CACHE_PREFIX}test-version`;
     const stores = new Map<string, Set<string>>([
       [old, new Set(['/gui', '/'])],
-      [current, new Set(['/', '/app.js', '/gui', '/gui/__data.json', '/gui?/delete', '/%67ui', '/admin/__data.json'])],
+      [current, new Set(['/', '/app.js', '/gui', '/gui/__data.json', '/gui?/delete', '/%67ui', '/admin/__data.json', '/api/version', '/transparence'])],
       ['unrelated-cache', new Set(['/gui'])]
     ]);
     const storage = {

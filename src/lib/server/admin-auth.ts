@@ -2,7 +2,12 @@ import { createHmac, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import type { Cookies, RequestEvent } from '@sveltejs/kit';
 
 export const ADMIN_COOKIE = 'jemecompte_gui';
-export const ADMIN_SESSION_SECONDS = 8 * 60 * 60;
+export const ADMIN_SESSION_SECONDS = 60 * 60;
+export const ADMIN_IDLE_SECONDS = 15 * 60;
+const MAX_ADMIN_SESSIONS = 128;
+// A session must have been issued by this process. Restarting or logging out revokes it.
+// This small, bounded registry requires one application instance.
+const sessions = new Map<string, { expiresAt: number; lastSeenAt: number }>();
 const HASH_PREFIX = 'scrypt$131072$8$1$';
 const HASH_PATTERN = /^scrypt\$131072\$8\$1\$([A-Za-z0-9_-]{22})\$([A-Za-z0-9_-]{43})$/;
 
@@ -45,8 +50,16 @@ function signature(payload: string, config: { hash: string; secret: string }): s
 export function createAdminSession(now = Date.now()): string {
   const config = configuration();
   if (!config) throw new Error('Private administration is not configured.');
-  const payload = `v1.${Math.floor(now / 1000) + ADMIN_SESSION_SECONDS}.${randomBytes(16).toString('base64url')}`;
-  return `${payload}.${signature(payload, config)}`;
+  const seconds = Math.floor(now / 1000);
+  for (const [token, session] of sessions) {
+    if (session.expiresAt <= seconds || session.lastSeenAt + ADMIN_IDLE_SECONDS <= seconds) sessions.delete(token);
+  }
+  if (sessions.size >= MAX_ADMIN_SESSIONS) throw new Error('Administrative session capacity reached.');
+  const expiresAt = seconds + ADMIN_SESSION_SECONDS;
+  const payload = `v1.${expiresAt}.${randomBytes(16).toString('base64url')}`;
+  const token = `${payload}.${signature(payload, config)}`;
+  sessions.set(token, { expiresAt, lastSeenAt: seconds });
+  return token;
 }
 
 export function validAdminSession(value: string | undefined, now = Date.now()): boolean {
@@ -59,7 +72,19 @@ export function validAdminSession(value: string | undefined, now = Date.now()): 
   if (expiry <= seconds || expiry > seconds + ADMIN_SESSION_SECONDS) return false;
   const supplied = Buffer.from(match[3]!, 'base64url');
   const expected = Buffer.from(signature(match[1]!, config), 'base64url');
-  return supplied.length === expected.length && timingSafeEqual(supplied, expected);
+  if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return false;
+  const session = sessions.get(value);
+  if (!session) return false;
+  if (session.expiresAt !== expiry || session.lastSeenAt + ADMIN_IDLE_SECONDS <= seconds) {
+    sessions.delete(value);
+    return false;
+  }
+  session.lastSeenAt = seconds;
+  return true;
+}
+
+export function revokeAdminSession(value: string | undefined): void {
+  if (value) sessions.delete(value);
 }
 
 export function adminAuthenticated(cookies: Pick<Cookies, 'get'>): boolean {
@@ -68,12 +93,14 @@ export function adminAuthenticated(cookies: Pick<Cookies, 'get'>): boolean {
 
 export function setAdminSession(event: Pick<RequestEvent, 'cookies' | 'url'>): void {
   const origin = new URL(process.env.ORIGIN || event.url.origin);
+  revokeAdminSession(event.cookies.get(ADMIN_COOKIE));
   event.cookies.set(ADMIN_COOKIE, createAdminSession(), {
     path: '/gui', httpOnly: true, sameSite: 'strict', secure: origin.protocol === 'https:', maxAge: ADMIN_SESSION_SECONDS
   });
 }
 
-export function clearAdminSession(cookies: Pick<Cookies, 'delete'>): void {
+export function clearAdminSession(cookies: Pick<Cookies, 'get' | 'delete'>): void {
+  revokeAdminSession(cookies.get(ADMIN_COOKIE));
   cookies.delete(ADMIN_COOKIE, { path: '/gui' });
 }
 
@@ -84,10 +111,10 @@ export class AdminLoginLimiter {
   private global = { attempts: 0, expiresAt: 0 };
   private active = false;
 
-  acquire(address: string, now = Date.now()): (() => void) | undefined {
+  acquire(address: string, now = Date.now(), operation: 'login' | 'delete' = 'login'): (() => void) | undefined {
     for (const [key, bucket] of this.peers) if (bucket.expiresAt <= now) this.peers.delete(key);
     if (this.global.expiresAt <= now) this.global = { attempts: 0, expiresAt: now + 60_000 };
-    const key = createHmac('sha256', this.secret).update(address).digest('base64url');
+    const key = createHmac('sha256', this.secret).update(operation).update('\0').update(address).digest('base64url');
     let peer = this.peers.get(key);
     if (this.active || this.global.attempts >= 30 || (peer && peer.attempts >= 5)) return;
     if (!peer) {

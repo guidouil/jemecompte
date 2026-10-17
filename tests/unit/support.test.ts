@@ -3,6 +3,11 @@ import { createSupportFlow, type SupportFlowState } from '../../src/lib/client/s
 import { getDailySupportIdentity, getEventIdentity } from '../../src/lib/client/identity';
 import type { CounterSnapshot, PublicEvent } from '../../src/lib/shared/types';
 
+vi.mock('../../src/lib/client/admission', async (original) => ({
+  ...await original<typeof import('../../src/lib/client/admission')>(),
+  getAdmissionProof: vi.fn().mockResolvedValue({ token: 'synthetic-work-token', nonce: 7 })
+}));
+
 vi.mock('../../src/lib/client/identity', async (original) => ({
   ...await original<typeof import('../../src/lib/client/identity')>(),
   getEventIdentity: vi.fn(), getDailySupportIdentity: vi.fn()
@@ -88,7 +93,8 @@ describe('remote support flow', () => {
     ]);
     expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({ anonymousEventId: identity });
     expect(JSON.parse(fetchMock.mock.calls[1]![1].body)).toEqual({
-      anonymousEventId: identity, anonymousDayId: dayIdentity, day: '2026-10-16', protocolVersion: 1
+      anonymousEventId: identity, anonymousDayId: dayIdentity, day: '2026-10-16', protocolVersion: 1,
+      admission: { token: 'synthetic-work-token', nonce: 7 }
     });
     expect(geolocate).not.toHaveBeenCalled();
     await flow.support(eventId);
@@ -125,7 +131,8 @@ describe('remote support flow', () => {
     await flow.support(eventId);
     expect(JSON.parse(fetchMock.mock.calls[1]![1].body)).toEqual({
       anonymousEventId: identity, anonymousDayId: dayIdentity,
-      day: '2026-10-16', protocolVersion: 1, countingScope: 'city'
+      day: '2026-10-16', protocolVersion: 1, countingScope: 'city',
+      admission: { token: 'synthetic-work-token', nonce: 7 }
     });
     expect(geolocate).not.toHaveBeenCalled();
   });

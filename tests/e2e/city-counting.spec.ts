@@ -97,7 +97,7 @@ test('home requires an explicit whole-city choice before generating an identity 
   await page.getByRole('button', { name: new RegExp(`${cityName}.*ME COMPTER DANS CETTE VILLE`) }).click();
   await expect(page.getByRole('button', { name: /VOUS ÊTES COMPTÉ/ })).toBeVisible();
   expect(submissions).toHaveLength(1);
-  expect(Object.keys(submissions[0]!).sort()).toEqual(['anonymousEventId', 'countingScope', 'geofenceVersion', 'insideZone', 'protocolVersion']);
+  expect(Object.keys(submissions[0]!).sort()).toEqual(['admission', 'anonymousEventId', 'countingScope', 'geofenceVersion', 'insideZone', 'protocolVersion']);
   expect(submissions[0]!.countingScope).toBe('city');
   await expect(page.locator('.counter-caption')).toContainText('participations et soutiens');
   await expect(page.locator('.counter-caption')).toContainText('pour ce comptage de commune');

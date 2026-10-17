@@ -64,6 +64,7 @@ export type AdmissionStatus =
   | 'rate_limited'
   | 'temporarily_unavailable'
   | 'real_events_disabled'
+  | 'admission_required'
   | 'scope_confirmation_required';
 
 export interface ParticipationReply {

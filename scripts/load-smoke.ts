@@ -1,10 +1,12 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { access } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
+import { nonceBytes, sufficientWork, workPrefix } from '../src/lib/shared/admission-work';
+import type { AdmissionChallenge } from '../src/lib/shared/admission';
 
 // Local synthetic smoke test, not a production capacity benchmark. No application DB fallback.
 const HOST = '127.0.0.1';
@@ -37,7 +39,7 @@ function testDatabaseUrl(): string {
   return value;
 }
 
-type RequestKind = 'readers' | 'admissions' | 'replays' | 'metrics';
+type RequestKind = 'readers' | 'admissions' | 'replays' | 'metrics' | 'challenges';
 interface Metrics {
   memoryBytes: number;
   realtime: { connections: number; channels: number };
@@ -52,7 +54,8 @@ interface ReaderHandle {
 
 async function main(): Promise<void> {
   const total = parameter('TOTAL', 1_000, 1, 20_000);
-  const readerCount = parameter('READERS', 200, 0, 6_000);
+  // All readers share loopback: respect the production per-network SSE ceiling.
+  const readerCount = parameter('READERS', 32, 0, 64);
   const concurrency = parameter('CONCURRENCY', 64, 1, 128);
   const databaseUrl = testDatabaseUrl();
   const metricsToken = randomBytes(32).toString('base64url');
@@ -61,8 +64,9 @@ async function main(): Promise<void> {
   pool.on('error', () => {});
   const readers: ReaderHandle[] = [];
   const requestControllers = new Set<AbortController>();
+  const ownWorkClaims: Buffer[] = [];
   const statuses: Record<RequestKind, Record<string, number>> = {
-    readers: {}, admissions: {}, replays: {}, metrics: {}
+    readers: {}, admissions: {}, replays: {}, metrics: {}, challenges: {}
   };
   const businessStatuses: Record<string, number> = {};
   const confirmations: number[] = [];
@@ -236,10 +240,25 @@ async function main(): Promise<void> {
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
       let response: Response | undefined;
       try {
+        const payload = { anonymousEventId, geofenceVersion: 1, protocolVersion: 1, insideZone: true };
+        const challengeResponse = await request('/api/admission', 'challenges', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
+          body: JSON.stringify({ action: 'presence', eventId: fixtureId, payload })
+        });
+        if (challengeResponse.status === 429 || challengeResponse.status === 503) {
+          await challengeResponse.body?.cancel(); await sleep(retryDelay(challengeResponse, attempt)); continue;
+        }
+        if (!challengeResponse.ok) throw new Error('Synthetic admission challenge unavailable');
+        const challenge = await challengeResponse.json() as AdmissionChallenge;
+        const claims = JSON.parse(Buffer.from(challenge.token.split('.')[0]!, 'base64url').toString());
+        ownWorkClaims.push(createHash('sha256').update(claims[1]).digest());
+        const prefix = createHash('sha256').update(workPrefix(challenge.token));
+        let nonce = 0;
+        while (!sufficientWork(prefix.copy().update(nonceBytes(nonce)).digest(), challenge.difficulty)) nonce++;
         response = await request(`/api/events/${fixtureId}/presences`, replay ? 'replays' : 'admissions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Origin: ORIGIN, 'Sec-Fetch-Site': 'same-origin' },
-          body: JSON.stringify({ anonymousEventId, geofenceVersion: 1, protocolVersion: 1, insideZone: true })
+          body: JSON.stringify({ ...payload, admission: { token: challenge.token, nonce } })
         });
         if (response.status === 429 || response.status === 503) {
           await response.body?.cancel();
@@ -386,6 +405,7 @@ async function main(): Promise<void> {
             await connection.query(`DELETE FROM ${table} WHERE event_id=$1`, [fixtureId]);
           }
           await connection.query('DELETE FROM events WHERE id=$1 AND is_test=true', [fixtureId]);
+          await connection.query('DELETE FROM admission_claims WHERE nonce_hash=ANY($1::bytea[])', [ownWorkClaims]);
           await connection.query('COMMIT');
           cleanupSucceeded = true;
         } catch {

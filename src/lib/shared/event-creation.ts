@@ -52,4 +52,4 @@ export const createEventPayloadSchema = z.union([
 export type CreateEventPayload = z.infer<typeof createEventPayloadSchema>;
 export type CreateEventReply =
   | { status: 'created' | 'already_created'; event: PublicEvent }
-  | { status: 'request_conflict' | 'invalid_schedule' | 'temporarily_unavailable' };
+  | { status: 'request_conflict' | 'invalid_schedule' | 'invalid_location' | 'temporarily_unavailable' | 'admission_required' };

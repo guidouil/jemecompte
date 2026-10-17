@@ -74,8 +74,12 @@
         <dd>L’application utilise temporairement l’IP et l’identifiant pseudonyme de participation, dans le contexte de l’événement, pour limiter les requêtes excessives. Les signaux calculés restent en mémoire et ne sont pas enregistrés avec les participations.<span class="retention">Fenêtres de limitation allant jusqu’à une heure. Les entrées expirées sont nettoyées lors de l’activité du service ou à son redémarrage, sans archivage en base.</span></dd>
       </div>
       <div>
+        <dt>La protection automatique des contributions</dt>
+        <dd>Après votre action, un court calcul local freine les envois automatisés. Il concerne une seule demande de présence, de soutien ou de création. Aucun CAPTCHA, service tiers, cookie supplémentaire ni empreinte de votre appareil n’intervient ; ni la vitesse du calcul ni les caractéristiques de votre appareil ne sont envoyées. Le serveur reçoit la même déclaration et une preuve temporaire.<span class="retention">La preuve expire après deux minutes. La base ne garde qu’une empreinte aléatoire de preuve consommée et son expiration, sans événement, identifiant participant ou IP. Les marqueurs expirés sont supprimés par la purge planifiée toutes les 15 minutes ; un incident peut retarder cette suppression.</span></dd>
+      </div>
+      <div>
         <dt>Les événements et leurs compteurs</dt>
-        <dd>Nom, commune, description éventuelle, périmètre, horaires et totaux sont publics. La création ne conserve pas de compte ou d’identité de créateur.<span class="retention">Conservés sans échéance automatique, pour garder les résultats et le contexte du comptage.</span></dd>
+        <dd>Nom, commune, description éventuelle, périmètre, horaires et totaux sont publics. La création ne conserve pas de compte ou d’identité de créateur. Pour repérer les afflux inhabituels, des nombres de demandes et de contributions sont regroupés par événement et minute, sans identifiant individuel ni IP.<span class="retention">Les métriques par minute restent en mémoire dix minutes au maximum et ne sont accessibles qu’à l’exploitation. Les événements et leurs totaux sont conservés sans échéance automatique, pour garder les résultats et leur contexte.</span></dd>
       </div>
       <div>
         <dt>Les actions d’administration</dt>

@@ -4,10 +4,21 @@ import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vite';
 
 export default defineConfig(({ command }) => ({
+  // Production uses scripts/build-release.mjs. The development identifier never
+  // claims a Git or artifact verification, and no environment dump is exposed.
+  define: {
+    __JEMECOMPTE_BUILD_INFO__: process.env.JEMECOMPTE_BUILD_INFO || JSON.stringify({
+      schemaVersion: 1, repository: 'https://github.com/guidouil/jemecompte', commit: null,
+      workingTree: 'unavailable', sourceInventory: 'unavailable', sourceSha256: null,
+      sourceFileCount: 0, lockSha256: null, node: null, npm: null, origin: null, admissionDifficulty: 18,
+      builder: 'development', workflowRun: null, buildId: 'development'
+    })
+  },
   plugins: [
     sveltekit({
       adapter: adapter(),
       preprocess: vitePreprocess(),
+      version: { name: process.env.JEMECOMPTE_BUILD_INFO ? JSON.parse(process.env.JEMECOMPTE_BUILD_INFO).buildId : 'development' },
       paths: { origin: process.env.ORIGIN || undefined },
       csp: {
         mode: 'auto',

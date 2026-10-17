@@ -69,6 +69,7 @@ describe('private GUI actions', () => {
 
   it('requires the service to confirm the slug, reports only sanitized errors, and preserves public confirmation', async () => {
     auth.authenticated.mockReturnValue(true);
+    auth.verify.mockResolvedValue(true);
     database.remove.mockResolvedValueOnce({ status: 'confirmation_mismatch' });
     expect(await action('delete', event({ eventId: id, confirmation: 'wrong-slug' }))).toMatchObject({ status: 400, data: { failedEventId: id, confirmation: 'wrong-slug' } });
     database.remove.mockRejectedValueOnce(new Error('SQL containing sensitive information'));
@@ -78,5 +79,30 @@ describe('private GUI actions', () => {
     database.remove.mockResolvedValueOnce({ status: 'deleted', eventId: id });
     expect(await action('delete', event({ eventId: id, confirmation: 'right-slug' }))).toMatchObject({ deletedId: id });
     expect(database.remove).toHaveBeenLastCalledWith(id, 'right-slug', { operator: 'gui-owner', reason: expect.any(String) });
+  });
+
+  it('requires a password again before a destructive action even with a valid copied session', async () => {
+    auth.authenticated.mockReturnValue(true);
+    auth.verify.mockResolvedValue(false);
+    expect(await action('delete', event({ eventId: id, confirmation: 'slug' }))).toMatchObject({ status: 400 });
+    expect(auth.verify).toHaveBeenCalledWith(null);
+    expect(database.remove).not.toHaveBeenCalled();
+    const failed = await action('delete', event({ eventId: id, confirmation: 'slug', adminPassword: 'incorrect-password-for-delete' }));
+    expect(failed).toMatchObject({ status: 400, data: { failedEventId: id, confirmation: 'slug' } });
+    expect(JSON.stringify(failed)).not.toContain('incorrect-password-for-delete');
+    expect(auth.verify).toHaveBeenCalledWith('incorrect-password-for-delete');
+    expect(database.remove).not.toHaveBeenCalled();
+    expect(auth.acquire.mock.results[0]!.value).toHaveBeenCalledTimes(2);
+    auth.acquire.mockReturnValue(undefined);
+    expect(await action('delete', event({ eventId: id, confirmation: 'slug', adminPassword: 'another-password' }))).toMatchObject({ status: 429 });
+    expect(auth.verify).toHaveBeenCalledTimes(2);
+  });
+
+  it('rechecks session revocation after password verification before deleting', async () => {
+    auth.authenticated.mockReturnValueOnce(true).mockReturnValue(false);
+    auth.verify.mockResolvedValue(true);
+    expect(await action('delete', event({ eventId: id, confirmation: 'slug', adminPassword: 'private-password' }))).toMatchObject({ status: 401 });
+    expect(database.remove).not.toHaveBeenCalled();
+    expect(auth.acquire.mock.results[0]!.value).toHaveBeenCalledOnce();
   });
 });

@@ -186,7 +186,7 @@ test('shows the national gathering total on home after counting while keeping ev
     for (const [id, scope] of [[extraGatheringId, 'gathering'], [cityId, 'city']] as const) {
       const response = await request.post(`/api/events/${id}/presences`, {
         headers: { Origin: 'http://127.0.0.1:5175' },
-        data: { anonymousEventId: randomBytes(32).toString('base64url'), geofenceVersion: 1, protocolVersion: 1, insideZone: true, countingScope: scope }
+        data: await admittedBody(request, 'presence', { anonymousEventId: randomBytes(32).toString('base64url'), geofenceVersion: 1, protocolVersion: 1, insideZone: true, countingScope: scope }, id)
       });
       expect(response.ok()).toBe(true);
       const reply = await response.json() as ParticipationReply;
@@ -219,7 +219,7 @@ test('shows the national gathering total on home after counting while keeping ev
     await expect(page.locator('.counter-number')).toHaveText(formatCount(snapshot.nationalTotal));
     await expect(page.locator('.counter-number')).not.toHaveAttribute('aria-label', 'Aucun comptage sélectionné');
     await expect(page.locator('.counter-heading')).toContainText('RASSEMBLEMENTS LOCALISÉS');
-    await expect(page.locator('.counter-caption')).toContainText('participations enregistrées');
+    await expect(page.locator('.counter-caption')).toContainText('participations et soutiens');
     await expect(page.locator('.counter-caption')).toContainText('France');
     await expect(page.locator('.national-count')).toHaveCount(2);
     await expect(cities.locator('strong')).toHaveText(formatCount(cityNationalTotal));
@@ -250,3 +250,4 @@ test('identifies when the home national total was loaded and how to refresh it',
   }).format(new Date(loadedAt!)));
   await expect(page.locator('.counter-updated')).toHaveCount(0);
 });
+import { admittedBody } from '../helpers/admission';

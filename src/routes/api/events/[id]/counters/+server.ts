@@ -2,11 +2,13 @@ import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
 import { publicCounterSnapshot } from '#lib/server/public-data';
 import { withReadBudget } from '#lib/server/abuse';
-import { parseEventId, RequestFailure } from '#lib/server/http';
+import { guardPeer, parseEventId, RequestFailure } from '#lib/server/http';
 
-export const GET: RequestHandler = async ({ params }) => {
+export const GET: RequestHandler = async (event) => {
   try {
-    const snapshot = await withReadBudget(() => publicCounterSnapshot(parseEventId(params.id)));
+    const id = parseEventId(event.params.id);
+    guardPeer(event, id, 'read');
+    const snapshot = await withReadBudget(() => publicCounterSnapshot(id));
     return snapshot
       ? json(snapshot, { headers: { 'cache-control': 'public, max-age=3' } })
       : json({ status: 'not_found' }, { status: 404, headers: { 'cache-control': 'no-store' } });

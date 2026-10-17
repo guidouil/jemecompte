@@ -1,7 +1,7 @@
 import { json, type RequestEvent } from '@sveltejs/kit';
 import { z } from 'zod';
 import { eventIdSchema } from '#lib/shared/contracts';
-import { acquireWriteSlot, limiter } from './abuse';
+import { acquireParsingSlot, acquireWriteSlot, limiter, readLimiter, PeerCapacityError, ReadCapacityError, withReadBudget } from './abuse';
 import { record, recordHttpResponse, type UnavailableReason } from './observability';
 
 const privateHeaders = { 'cache-control': 'no-store', 'content-type': 'application/json' };
@@ -36,11 +36,28 @@ export async function readPrivateJson<T>(event: RequestEvent, schema: z.ZodType<
   if (declaredLength && (!/^\d+$/.test(declaredLength) || Number(declaredLength) > 2_048)) {
     throw new RequestFailure(privateJson({ status: 'invalid_request' }, 413));
   }
+  let release: () => void;
+  try { release = acquireParsingSlot(event.getClientAddress()); }
+  catch (failure) {
+    if (!(failure instanceof PeerCapacityError)) throw failure;
+    void request.body?.cancel().catch(() => {});
+    if (failure.kind === 'peer') {
+      record('rate_limited');
+      throw new RequestFailure(privateJson({ status: 'rate_limited', retryAfter: 3 }, 429, 3));
+    }
+    throw new RequestFailure(privateJson({ status: 'temporarily_unavailable', retryAfter: 3 }, 503, 3));
+  }
+  try { return await readBoundedJson(request, schema); }
+  finally { release(); }
+}
+
+async function readBoundedJson<T>(request: Request, schema: z.ZodType<T>): Promise<T> {
   const reader = request.body?.getReader();
   if (!reader) throw new RequestFailure(privateJson({ status: 'invalid_request' }, 400));
   const chunks: Uint8Array[] = [];
   let size = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let aborted: (() => void) | undefined;
   try {
     const read = async () => {
       while (true) {
@@ -54,14 +71,18 @@ export async function readPrivateJson<T>(event: RequestEvent, schema: z.ZodType<
       }
     };
     const deadline = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => {
+      aborted = () => {
         reject(new RequestFailure(privateJson({ status: 'invalid_request' }, 408)));
         void reader.cancel().catch(() => {});
-      }, 10_000);
+      };
+      timer = setTimeout(aborted, 3_000);
+      if (request.signal.aborted) aborted();
+      else request.signal.addEventListener('abort', aborted, { once: true });
     });
     await Promise.race([read(), deadline]);
   } finally {
     if (timer) clearTimeout(timer);
+    if (aborted) request.signal.removeEventListener('abort', aborted);
     void reader.cancel().catch(() => {});
     try { reader.releaseLock(); } catch { /* Pending reads are cancelled without holding an admission slot. */ }
   }
@@ -76,8 +97,9 @@ export async function readPrivateJson<T>(event: RequestEvent, schema: z.ZodType<
   return parsed.data;
 }
 
-export function guardPeer(event: RequestEvent, eventId: string): void {
-  if (!limiter.allow('peer', eventId, event.getClientAddress())) {
+export function guardPeer(event: RequestEvent, eventId: string, budget: 'write' | 'read' = 'write'): void {
+  const networkLimiter = budget === 'read' ? readLimiter : limiter;
+  if (!networkLimiter.allow('peer', eventId, event.getClientAddress())) {
     record('rate_limited');
     throw new RequestFailure(privateJson({ status: 'rate_limited', retryAfter: 2 }, 429, 2));
   }
@@ -87,6 +109,33 @@ export function guardIdentity(eventId: string, anonymousEventId: string): void {
   if (!limiter.allow('identity', eventId, anonymousEventId)) {
     record('rate_limited');
     throw new RequestFailure(privateJson({ status: 'rate_limited', retryAfter: 60 }, 429, 60));
+  }
+}
+
+/** Parse before reserving scarce database capacity. Slow bodies have their own
+ * bounded budget, including a per-network concurrency ceiling. */
+export async function privateRequest<T>(
+  event: RequestEvent,
+  schema: z.ZodType<T>,
+  work: (payload: T, eventId: string) => Promise<Response>,
+  options: { scope?: string; readOnly?: boolean; peerBudget?: 'write' | 'read' } = {}
+): Promise<Response> {
+  try {
+    const id = options.scope ?? parseEventId(event.params.id);
+    // Database read capacity and network admission budgets have different
+    // purposes: issuing an admission challenge still uses the write budget.
+    guardPeer(event, id, options.peerBudget);
+    const payload = await readPrivateJson(event, schema);
+    if (!options.readOnly) return await writeRequest(() => work(payload, id));
+    const response = await withReadBudget(() => work(payload, id));
+    recordHttpResponse('write', response.status);
+    return response;
+  } catch (failure) {
+    if (!(failure instanceof RequestFailure) && !(failure instanceof ReadCapacityError)) record('server_error');
+    const response = failure instanceof RequestFailure ? failure.response
+      : privateJson({ status: 'temporarily_unavailable', retryAfter: 3 }, 503, 3);
+    recordHttpResponse('write', response.status);
+    return response;
   }
 }
 

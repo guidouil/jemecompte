@@ -98,6 +98,7 @@ export async function purgeExpiredEvents(actor: AdminActor): Promise<{ purged: n
   // Operator data has its own documented six-month retention, unrelated to participants.
   await getPool().query("DELETE FROM admin_audit WHERE created_at < clock_timestamp() - interval '6 months'");
   await purgeExpiredDailySupportClaims();
+  await getPool().query('DELETE FROM admission_claims WHERE expires_at <= clock_timestamp()');
   return { purged, failed };
 }
 

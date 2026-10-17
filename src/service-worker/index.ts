@@ -2,13 +2,13 @@ import { self } from '$app/service-worker';
 import { version } from '$app/env';
 import { immutable, assets } from '$app/manifest';
 import {
-  PUBLIC_CACHE_PREFIX, PUBLIC_CACHE_GENERATION, PUBLIC_PAGES, isPrivatePath,
+  PUBLIC_CACHE_PREFIX, PUBLIC_CACHE_GENERATION, PUBLIC_PAGES, isPrivatePath, isProvenancePath,
   purgeObsoletePublicCaches, shouldHandlePublicRequest, shouldStorePublicResponse
 } from './cache-policy';
 
 const CACHE = `${PUBLIC_CACHE_PREFIX}${PUBLIC_CACHE_GENERATION}${version}`;
 const STATIC = [...immutable, ...assets].map((asset) => `/${asset.path.replace(/^\//, '')}`)
-  .filter((path) => !isPrivatePath(new URL(path, self.location.origin).pathname));
+  .filter((path) => !isPrivatePath(new URL(path, self.location.origin).pathname) && !isProvenancePath(new URL(path, self.location.origin).pathname));
 const staticPaths = new Set(STATIC);
 const DAY = 24 * 60 * 60_000;
 

@@ -84,8 +84,8 @@ describe.skipIf(!testUrl)('public test/real separation on PostgreSQL', () => {
       expect(await registerPresence(hidden, payload(), isTest)).toEqual({ status: 'not_found' });
       const controller = new AbortController();
       try {
-        expect(await counterStream(hidden, controller.signal)).toBeNull();
-        const response = await counterStream(visible, controller.signal);
+        expect(await counterStream(hidden, controller.signal, 'integration-test-peer')).toBeNull();
+        const response = await counterStream(visible, controller.signal, 'integration-test-peer');
         const frame = await response?.body?.getReader().read();
         const text = new TextDecoder().decode(frame?.value);
         const data = text.split('\n').find((line) => line.startsWith('data: '));

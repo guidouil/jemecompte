@@ -64,7 +64,7 @@ test.afterAll(async () => {
   } finally { await pool.end(); }
 });
 
-test('private management authenticates, searches, paginates and deletes only after an exact public-slug confirmation', async ({ page, request }) => {
+test('private management authenticates, searches, paginates and deletes only after an exact public-slug confirmation', async ({ page, request, browser }) => {
   const dialogs: string[] = [];
   page.on('dialog', async (dialog) => { dialogs.push(dialog.message()); await dialog.dismiss(); });
   await page.goto('http://localhost:5175/gui');
@@ -97,7 +97,7 @@ test('private management authenticates, searches, paginates and deletes only aft
   await expect(card).toHaveCount(1);
   await expect(card.locator('.admin-badges')).toContainText('Test');
   await expect(card.locator('.admin-badges')).toContainText('Rassemblement localisé');
-  await expect(card.locator('.admin-counts dd')).toHaveText(['2', '2']);
+  await expect(card.locator('.admin-counts dd')).toHaveText(['2', '2', '0', '2', '0']);
   await expect(card.locator('h3 img')).toHaveCount(0);
   const html = await page.content();
   for (const key of participantKeys) {
@@ -114,12 +114,14 @@ test('private management authenticates, searches, paginates and deletes only aft
   await page.screenshot({ path: '/tmp/jemecompte-gui-mobile-320.png', fullPage: true });
   const confirmation = card.getByLabel('Recopiez exactement le lien public pour confirmer', { exact: true });
   await confirmation.fill('wrong-public-slug');
+  await card.getByLabel('Mot de passe pour confirmer la suppression', { exact: true }).fill(password);
   await card.getByRole('button', { name: 'Supprimer définitivement', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('texte de confirmation ne correspond pas');
   await expect(confirmation).toHaveValue('wrong-public-slug');
   await expect(card.locator('details')).toHaveJSProperty('open', true);
   expect(await remaining(ids[0]!)).toEqual({ events: '1', presences: '2', counters: '1' });
   await confirmation.fill(slug(0));
+  await card.getByLabel('Mot de passe pour confirmer la suppression', { exact: true }).fill(password);
   await card.getByRole('button', { name: 'Supprimer définitivement', exact: true }).click();
   await expect(page.locator('.admin-success')).toContainText('toutes ses participations et ses compteurs ont été supprimés');
   await expect(card).toHaveCount(0);
@@ -133,6 +135,14 @@ test('private management authenticates, searches, paginates and deletes only aft
   await expect(page.getByRole('button', { name: 'Se connecter', exact: true })).toBeVisible();
   await expect(page.locator('.admin-events')).toHaveCount(0);
   expect((await page.context().cookies()).some((item) => item.name === 'jemecompte_gui')).toBe(false);
+  const copiedSession = await browser.newContext({ baseURL: 'http://127.0.0.1:5175' });
+  try {
+    await copiedSession.addCookies([cookie!]);
+    const copiedPage = await copiedSession.newPage();
+    await copiedPage.goto('/gui');
+    await expect(copiedPage.getByRole('heading', { name: 'Connexion', exact: true })).toBeVisible();
+    await expect(copiedPage.locator('.admin-events')).toHaveCount(0);
+  } finally { await copiedSession.close(); }
 });
 
 test('private login distinguishes refused, expired and limited requests from connection errors', async ({ page }) => {
@@ -178,6 +188,7 @@ test.describe('native private forms', () => {
     await expect(card.locator('.admin-badges')).toContainText('Commune entière');
     await card.locator('summary').click();
     await card.getByLabel('Recopiez exactement le lien public pour confirmer', { exact: true }).fill('wrong-native-slug');
+    await card.getByLabel('Mot de passe pour confirmer la suppression', { exact: true }).fill(password);
     await card.getByRole('button', { name: 'Supprimer définitivement', exact: true }).click();
     await expect(page.getByRole('alert')).toContainText('texte de confirmation ne correspond pas');
     card = page.locator('.admin-event');
@@ -185,6 +196,7 @@ test.describe('native private forms', () => {
     const confirmation = card.getByLabel('Recopiez exactement le lien public pour confirmer', { exact: true });
     await expect(confirmation).toHaveValue('wrong-native-slug');
     await confirmation.fill(slug(41));
+    await card.getByLabel('Mot de passe pour confirmer la suppression', { exact: true }).fill(password);
     await card.getByRole('button', { name: 'Supprimer définitivement', exact: true }).click();
     await expect(page.locator('.admin-success')).toContainText('toutes ses participations et ses compteurs ont été supprimés');
     expect(await remaining(ids[41]!)).toEqual({ events: '0', presences: '0', counters: '0' });

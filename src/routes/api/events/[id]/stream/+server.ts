@@ -8,11 +8,14 @@ export const GET: RequestHandler = async (event) => {
   let reason: UnavailableReason | undefined;
   try {
     const id = parseEventId(event.params.id);
-    guardPeer(event, id);
-    response = await counterStream(id, event.request.signal) ?? privateJson({ status: 'not_found' }, 404);
+    guardPeer(event, id, 'read');
+    response = await counterStream(id, event.request.signal, event.getClientAddress()) ?? privateJson({ status: 'not_found' }, 404);
   } catch (failure) {
     if (failure instanceof RequestFailure) response = failure.response;
-    else {
+    else if (failure instanceof StreamUnavailable && failure.peerLimited) {
+      record('rate_limited');
+      response = privateJson({ status: 'rate_limited', retryAfter: 5 }, 429, 5);
+    } else {
       reason = failure instanceof StreamUnavailable ? 'stream_capacity' : 'stream_failure';
       if (reason === 'stream_failure') record('server_error');
       response = privateJson({ status: 'temporarily_unavailable', retryAfter: 5 }, 503, 5);

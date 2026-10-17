@@ -150,6 +150,61 @@ describe('whole-commune creation service without a database', () => {
   });
 });
 
+describe('gathering municipality attribution', () => {
+  it('stores the official municipality name instead of the client label after checking the public center', async () => {
+    expect((await createPublicEvent({ ...input, cityName: 'Autre nom déclaré' })).status).toBe('created');
+    expect(mocked.boundary).toHaveBeenCalledExactlyOnceWith('75056');
+    expect(mocked.query.mock.calls[0]![1][4]).toBe('Paris');
+    expect(mocked.query.mock.calls[0]![1][6]).not.toBe(JSON.stringify(officialBoundary.geofence));
+  });
+
+  it('rejects a public center outside every component of the selected municipality before any write', async () => {
+    expect(await createPublicEvent({ ...input, publicCenter: [2.45, 48.85] })).toEqual({ status: 'invalid_location' });
+    expect(mocked.transaction).not.toHaveBeenCalled();
+    expect(mocked.query).not.toHaveBeenCalled();
+    expect(mocked.invalidate).not.toHaveBeenCalled();
+  });
+
+  it.each([[2.55, 48.85], [2.2, 48.85]])('accepts the second municipal component and the municipal boundary (%s, %s)', async (longitude, latitude) => {
+    expect((await createPublicEvent({ ...input, publicCenter: [longitude, latitude] })).status).toBe('created');
+  });
+
+  it('keeps an old declared name, location and digest on replay without requiring the provider', async () => {
+    const legacy = {
+      id: input.requestId, creation_source: 'community', creation_request_hash: expectedHash(), counting_scope: 'gathering',
+      city_name: 'Ancien nom déclaré', geofence: { type: 'Polygon', coordinates: [] }
+    };
+    mocked.preflight.mockResolvedValueOnce({ rows: [legacy] });
+    mocked.boundary.mockRejectedValueOnce(new MapUnavailable());
+    expect(await createPublicEvent(input)).toEqual({ status: 'already_created', event: legacy });
+    expect(mocked.boundary).not.toHaveBeenCalled();
+    expect(mocked.transaction).not.toHaveBeenCalled();
+    expect(mocked.query).not.toHaveBeenCalled();
+  });
+
+  it('returns a recoverable provider outage for a new request and recognizes a concurrent commit during an outage', async () => {
+    mocked.boundary.mockRejectedValueOnce(new MapUnavailable());
+    expect(await createPublicEvent(input)).toEqual({ status: 'temporarily_unavailable' });
+    expect(mocked.transaction).not.toHaveBeenCalled();
+    const legacy = {
+      id: input.requestId, creation_source: 'community', creation_request_hash: expectedHash(), counting_scope: 'gathering'
+    };
+    mocked.preflight.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [legacy] });
+    mocked.boundary.mockRejectedValueOnce(new MapUnavailable());
+    expect(await createPublicEvent(input)).toEqual({ status: 'already_created', event: legacy });
+    expect(mocked.query).not.toHaveBeenCalled();
+  });
+
+  it('rejects a changed historical request before cartography or writes', async () => {
+    mocked.preflight.mockResolvedValueOnce({ rows: [{
+      id: input.requestId, creation_source: 'community', creation_request_hash: expectedHash(), counting_scope: 'gathering'
+    }] });
+    expect(await createPublicEvent({ ...input, cityName: 'Autre ville' })).toEqual({ status: 'request_conflict' });
+    expect(mocked.boundary).not.toHaveBeenCalled();
+    expect(mocked.query).not.toHaveBeenCalled();
+  });
+});
+
 describe('event scheduling service without a database', () => {
   it('preserves the legacy immediate-request digest and delegates the omitted start to PostgreSQL', async () => {
     expect((await createPublicEvent(input)).status).toBe('created');

@@ -48,7 +48,7 @@
   const deleteAction = $derived(`${listUrl(data.page)}&/delete`);
 
   function trackedForm(kind: 'login' | 'logout' | 'delete'): SubmitFunction {
-    return ({ formData, cancel }) => {
+    return ({ formData, formElement, cancel }) => {
       if (busy) { cancel(); return; }
       const eventId = formData.get('eventId');
       busy = kind;
@@ -77,6 +77,8 @@
             submittedId = null;
           }
         } finally {
+          const password = formElement.querySelector<HTMLInputElement>('input[type="password"]');
+          if (kind === 'delete' && password) password.value = '';
           busy = null;
           busyEventId = null;
         }
@@ -111,7 +113,7 @@
     <form class="login-form" method="POST" action="/gui?/login" use:enhance={trackedForm('login')} aria-labelledby="login-title">
       <h2 id="login-title">Connexion</h2>
       <label for="admin-password">Mot de passe d’administration</label>
-      <input id="admin-password" name="adminPassword" type="password" autocomplete="current-password" required maxlength="512" disabled={Boolean(busy)} aria-describedby="login-help" aria-invalid={Boolean(errorMessage)} />
+      <input id="admin-password" name="adminPassword" type="password" autocomplete="current-password" required maxlength="256" disabled={Boolean(busy)} aria-describedby="login-help" aria-invalid={Boolean(errorMessage)} />
       <p id="login-help" class="field-help">Utilisez le mot de passe privé du service.</p>
       <button type="submit" class="primary-button" disabled={Boolean(busy)} aria-busy={busy === 'login'}>{busy === 'login' ? 'Connexion…' : 'Se connecter'}</button>
     </form>
@@ -137,7 +139,13 @@
                 <div class="event-heading"><div><p class="event-city">{event.cityName}</p><h3 id={`${event.id}-name`}>{event.name}</h3></div><div class="admin-badges"><span>{event.isTest ? 'Test' : 'Réel'}</span><span>{event.countingScope === 'city' ? 'Commune entière' : 'Rassemblement localisé'}</span><span>{statuses[event.status] ?? event.status}</span></div></div>
                 <p class="event-schedule">Du {formatDate(event.startsAt)}<br />au {formatDate(event.endsAt)} <span class="muted">(heure de Paris)</span></p>
                 <p class="event-slug"><span>Lien public</span><code>{event.slug}</code></p>
-                <dl class="admin-counts"><div><dt>Total du comptage</dt><dd>{formatCount(event.totalCount)}</dd></div><div><dt>Participations encore conservées</dt><dd>{formatCount(event.retainedPresences)}</dd></div></dl>
+                <dl class="admin-counts">
+                  <div><dt>Total du comptage</dt><dd>{formatCount(event.totalCount)}</dd></div>
+                  <div><dt>Présences</dt><dd>{formatCount(event.presenceCount)}</dd></div>
+                  <div><dt>Soutiens à distance</dt><dd>{formatCount(event.supportCount)}</dd></div>
+                  <div><dt>Présences encore conservées</dt><dd>{formatCount(event.retainedPresences)}</dd></div>
+                  <div><dt>Soutiens encore conservés</dt><dd>{formatCount(event.retainedSupports)}</dd></div>
+                </dl>
 
                 <details class="delete-panel" open={expandedId === event.id} ontoggle={(toggle) => {
                   if (toggle.currentTarget.open) expandedId = event.id;
@@ -151,6 +159,8 @@
                     <label for={`${event.id}-confirmation`}>Recopiez exactement le lien public pour confirmer</label>
                     <p id={`${event.id}-confirmation-help`} class="confirmation-value"><code>{event.slug}</code></p>
                     <input id={`${event.id}-confirmation`} name="confirmation" type="text" value={form?.failedEventId === event.id ? form.confirmation ?? '' : ''} autocomplete="off" spellcheck="false" autocapitalize="off" required maxlength="100" disabled={Boolean(busy)} aria-invalid={Boolean(errorMessage && submittedId === event.id)} aria-describedby={`${event.id}-delete-warning ${event.id}-confirmation-help${errorMessage && submittedId === event.id ? ' admin-action-error' : ''}`} />
+                    <label for={`${event.id}-password`}>Mot de passe pour confirmer la suppression</label>
+                    <input id={`${event.id}-password`} name="adminPassword" type="password" autocomplete="current-password" required maxlength="256" disabled={Boolean(busy)} />
                     <div class="delete-actions"><button type="submit" class="delete-button" disabled={Boolean(busy)} aria-busy={busy === 'delete' && busyEventId === event.id}>{busy === 'delete' && busyEventId === event.id ? 'Suppression…' : 'Supprimer définitivement'}</button><a href={listUrl(data.page)} class="text-button" aria-disabled={Boolean(busy)} onclick={(click) => { if (busy) click.preventDefault(); else expandedId = null; }}>Annuler</a></div>
                   </form>
                 </details>
@@ -206,7 +216,7 @@
   .event-slug { margin-top: 14px; font-size: 12px; }
   .event-slug > span { color: var(--muted); margin-right: 12px; }
   code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
-  .admin-counts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 21px 0; }
+  .admin-counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 21px 0; }
   .admin-counts dt { color: var(--muted); font-size: 12px; line-height: 1.6; }
   .admin-counts dd { margin: 5px 0 0; font-size: 27px; line-height: 1.2; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
   .delete-panel { border-top: 1px solid var(--line); padding-top: 6px; }
@@ -233,7 +243,7 @@
     .search-field { flex-basis: 100%; }
     .admin-search > .secondary-button { flex: 1; }
     .admin-badges { justify-content: flex-start; }
-    .admin-counts { gap: 13px; }
+    .admin-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
     .admin-counts dd { font-size: 24px; }
     .delete-panel form { padding: 14px; }
     .delete-button { width: 100%; }

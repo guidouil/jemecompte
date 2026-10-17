@@ -80,13 +80,15 @@ describe('private administrative event service', () => {
     const row = {
       id: eventId, slug, name: 'Comptage fictif', city_name: 'Ville fictive', status: 'closed', is_test: false,
       counting_scope: 'city', starts_at: new Date('2026-10-17T05:00:00Z'), ends_at: new Date('2026-10-17T17:00:00Z'),
-      total_count: '42', retained_presences: '0', geofence: 'PRIVATE_SENTINEL', anonymous_event_id: 'PRIVATE_SENTINEL'
+      presence_count: '90071992547409930', support_count: '7', retained_presences: '0', retained_supports: '2',
+      geofence: 'PRIVATE_SENTINEL', anonymous_event_id: 'PRIVATE_SENTINEL'
     };
     mocks.query.mockResolvedValue({ rows: Array.from({ length: 41 }, () => row) });
     const result = await listAdminEvents({ page: 2, q: '  100%_literal  ' });
     expect(result).toMatchObject({ page: 2, pageSize: 40, hasNext: true });
     expect(result.events).toHaveLength(40);
-    expect(result.events[0]).toMatchObject({ totalCount: '42', retainedPresences: '0', countingScope: 'city', isTest: false });
+    expect(result.events[0]).toMatchObject({ totalCount: '90071992547409937', presenceCount: '90071992547409930', supportCount: '7',
+      retainedPresences: '0', retainedSupports: '2', countingScope: 'city', isTest: false });
     expect(JSON.stringify(result)).not.toContain('PRIVATE_SENTINEL');
     expect(mocks.query.mock.calls[0]![1]).toEqual(['100%_literal', 41, 40]);
     expect(mocks.query.mock.calls[0]![0]).not.toContain('100%_literal');

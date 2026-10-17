@@ -1,5 +1,6 @@
 import { getDailySupportIdentity, getEventIdentity, IdentityError } from './identity';
 import { parseCounterSnapshot } from './counter-snapshot';
+import { AdmissionClientError, getAdmissionProof } from './admission';
 import type { CounterSnapshot, PublicEvent } from '../shared/types';
 
 export interface SupportFlowState {
@@ -35,7 +36,9 @@ const messages = {
   daily_limit_reached: 'Ce navigateur a déjà soutenu un autre événement aujourd’hui. Un seul événement peut être soutenu par jour, selon l’heure de Paris.',
   day_changed: 'Le jour de comptage a changé. Réessayez pour soutenir l’événement à la date actuelle, selon l’heure de Paris.',
   offline: 'Vous êtes hors connexion. Retrouvez du réseau puis réessayez.',
-  network_error: 'La confirmation n’est pas arrivée. Votre soutien n’est pas encore confirmé.'
+  network_error: 'La confirmation n’est pas arrivée. Votre soutien n’est pas encore confirmé.',
+  admission_required: 'La protection de cette demande a expiré. Réessayez ; si nécessaire, rechargez la page.',
+  admission_timeout: 'Votre appareil est occupé. Réessayez pour terminer la vérification locale.'
 };
 
 class RequestError extends Error {
@@ -106,11 +109,14 @@ export function createSupportFlow(options: FlowOptions) {
   async function request(path: string, body: object) {
     const activeController = new AbortController();
     controller = activeController;
-    const timeout = setTimeout(() => activeController.abort(), 12_000);
+    const timeout = setTimeout(() => activeController.abort(), 20_000);
     try {
+      const securedBody = path.endsWith('/supports')
+        ? { ...body, admission: await getAdmissionProof('support', path.split('/')[3], body, activeController.signal) }
+        : body;
       const response = await fetch(path, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body), credentials: 'same-origin', cache: 'no-store',
+        body: JSON.stringify(securedBody), credentials: 'same-origin', cache: 'no-store',
         signal: activeController.signal
       });
       const value: unknown = await response.json();
@@ -119,6 +125,7 @@ export function createSupportFlow(options: FlowOptions) {
       }
       return { response, body: value as Record<string, unknown> };
     } catch (error) {
+      if (error instanceof AdmissionClientError) throw new RequestError(error.code, error.retryAfter);
       if (error instanceof RequestError) throw error;
       throw new RequestError(globalThis.navigator?.onLine === false ? 'offline' : 'network_error');
     } finally {

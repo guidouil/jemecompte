@@ -88,7 +88,8 @@ test('creates a whole-city request without a radius and recovers the exact reque
   const bodies: string[] = [];
   // Every creation stays in the browser fixture; no event is written to the server.
   await page.route('**/api/events/create', (route) => {
-    bodies.push(route.request().postData()!);
+    const { admission: _proof, ...declaration } = route.request().postDataJSON();
+    bodies.push(JSON.stringify(declaration));
     return route.fulfill({ status: 503, json: { status: 'temporarily_unavailable' } });
   });
 
@@ -111,7 +112,7 @@ test('creates a whole-city request without a radius and recovers the exact reque
   await expectNoParticipation(page, participationRequests);
   expect(bodies).toEqual([]);
   await page.getByRole('button', { name: /^Créer le comptage/ }).click();
-  await expect(page.getByText('Le contour de la commune est momentanément indisponible. Réessayez ici : la même demande est conservée.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Le contour de la commune est momentanément indisponible. Réessayez ici : la même demande est conservée.', { exact: true })).toBeVisible({ timeout: 12_000 });
   expect(bodies).toHaveLength(1);
   const body = JSON.parse(bodies[0]!) as Record<string, unknown>;
   expect(Object.keys(body).sort()).toEqual([
@@ -137,7 +138,7 @@ test('creates a whole-city request without a radius and recovers the exact reque
   const retry = page.getByRole('button', { name: /^Reprendre la même demande/ });
   await expect(retry).toBeEnabled();
   await retry.click();
-  await expect(page.getByText('Le contour de la commune est momentanément indisponible. Réessayez ici : la même demande est conservée.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Le contour de la commune est momentanément indisponible. Réessayez ici : la même demande est conservée.', { exact: true })).toBeVisible({ timeout: 12_000 });
   expect(bodies).toEqual([bodies[0], bodies[0]]);
   expect(await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!), EVENT_CREATION_DRAFT_KEY)).toEqual(draft);
   await expectNoParticipation(page, participationRequests);
@@ -155,7 +156,8 @@ test('requires an explicit retry after the first city boundary fails before enab
   });
   const creations: string[] = [];
   await page.route('**/api/events/create', (route) => {
-    creations.push(route.request().postData()!);
+    const { admission: _proof, ...declaration } = route.request().postDataJSON();
+    creations.push(JSON.stringify(declaration));
     return route.fulfill({ status: 503, json: { status: 'temporarily_unavailable' } });
   });
 

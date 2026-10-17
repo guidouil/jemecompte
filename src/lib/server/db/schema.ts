@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
-  bigint, bigserial, boolean, check, customType, date, integer, jsonb,
+  bigint, bigserial, boolean, check, customType, date, index, integer, jsonb,
   pgTable, primaryKey, timestamp, uuid, varchar
 } from 'drizzle-orm/pg-core';
 import type { CountingScope, EventGeofence } from '../../shared/types';
@@ -89,6 +89,14 @@ export const dailySupportClaims = pgTable('daily_support_claims', {
 }, (table) => [
   primaryKey({ columns: [table.countingDay, table.anonymousDayId] }),
   check('daily_support_claims_identifier_length', sql`octet_length(${table.anonymousDayId}) = 32`)
+]);
+
+export const admissionClaims = pgTable('admission_claims', {
+  nonceHash: bytea('nonce_hash').primaryKey(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull()
+}, (table) => [
+  check('admission_claims_nonce_hash_check', sql`octet_length(${table.nonceHash}) = 32`),
+  index('admission_claims_expiry').on(table.expiresAt)
 ]);
 
 export const adminAudit = pgTable('admin_audit', {

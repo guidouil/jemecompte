@@ -1,6 +1,7 @@
 import { getEventIdentity, IdentityError } from './identity';
 import { isEventOpen, locateEvents, LocationError } from './geolocation';
 import { parseCounterSnapshot } from './counter-snapshot';
+import { AdmissionClientError, getAdmissionProof } from './admission';
 import type {
   CounterSnapshot,
   FlowState,
@@ -40,7 +41,9 @@ const messages = {
   offline: 'Vous êtes hors connexion. Retrouvez du réseau puis réessayez.',
   network_error: 'La confirmation n’est pas arrivée. Votre participation n’est pas encore confirmée.',
   outside_zone: 'Votre position ne correspond pas au périmètre de cet événement.',
-  position_expired: 'Votre position doit être vérifiée de nouveau. Appuyez sur Réessayer.'
+  position_expired: 'Votre position doit être vérifiée de nouveau. Appuyez sur Réessayer.',
+  admission_required: 'La protection de cette demande a expiré. Réessayez ; si nécessaire, rechargez la page.',
+  admission_timeout: 'Votre appareil est occupé. Réessayez pour terminer la vérification locale.'
 };
 
 function messageFor(code: string): string {
@@ -126,12 +129,15 @@ export function createParticipationFlow(options: FlowOptions) {
   ): Promise<{ body: Record<string, unknown>; response: Response }> {
     controller = new AbortController();
     const activeController = controller;
-    const timeout = setTimeout(() => activeController.abort(), 12_000);
+    const timeout = setTimeout(() => activeController.abort(), 20_000);
     try {
+      const securedBody = body && path.endsWith('/presences')
+        ? { ...body, admission: await getAdmissionProof('presence', path.split('/')[3], body, activeController.signal) }
+        : body;
       const response = await fetch(path, {
         method: body ? 'POST' : 'GET',
         headers: body ? { 'Content-Type': 'application/json' } : { Accept: 'application/json' },
-        ...(body ? { body: JSON.stringify(body) } : {}),
+        ...(securedBody ? { body: JSON.stringify(securedBody) } : {}),
         credentials: 'same-origin',
         cache: 'no-store',
         signal: activeController.signal
@@ -142,6 +148,7 @@ export function createParticipationFlow(options: FlowOptions) {
       }
       return { body: value as Record<string, unknown>, response };
     } catch (error) {
+      if (error instanceof AdmissionClientError) throw new RequestError(error.code, error.retryAfter);
       if (error instanceof RequestError) throw error;
       throw new RequestError(globalThis.navigator?.onLine === false ? 'offline' : 'network_error');
     } finally {
@@ -223,7 +230,7 @@ export function createParticipationFlow(options: FlowOptions) {
       }
     } catch (error) {
       if (destroyed) return;
-      hold(attempt, error instanceof RequestError ? error.code : 'network_error');
+      hold(attempt, error instanceof RequestError ? error.code : 'network_error', error instanceof RequestError ? error.retryAfter : 0);
     }
   }
 

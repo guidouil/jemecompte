@@ -1,0 +1,77 @@
+name: Publish verified runtime
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      origin:
+        description: Canonical public HTTPS origin embedded in the release
+        required: true
+        default: https://jemecompte.fr
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: verify
+    if: github.repository == 'guidouil/jemecompte' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    env:
+      ORIGIN: ${{ inputs.origin || vars.PUBLIC_ORIGIN || 'https://jemecompte.fr' }}
+      JEMECOMPTE_RELEASE: 'true'
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.19.0'
+      - name: Install locked build tools without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      # The reusable CI builds its PWA fixture for loopback. Build this release in
+      # a separate clean job with its actual public origin, never reuse that fixture.
+      - name: Build public release and inventory source inputs
+        run: npm run build
+      - name: Package locked production dependencies and verify every file
+        run: npm run release:package
+      - name: Start the isolated archive and compare its public files
+        run: node scripts/smoke-release.mjs .release/runtime
+      - name: Attest runtime archive and public checksums
+        id: attest
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: |
+            .release/jemecompte-*.tar.gz
+            .release/SHA256SUMS
+      - name: Preserve the attestation bundle beside the archive
+        env:
+          ATTESTATION_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: cp "$ATTESTATION_BUNDLE" .release/attestation.sigstore.json
+      - name: Publish archive, checksums and attestation bundle
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: jemecompte-${{ github.sha }}
+          path: |
+            .release/jemecompte-*.tar.gz
+            .release/SHA256SUMS
+            .release/attestation.sigstore.json
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
+          compression-level: 0

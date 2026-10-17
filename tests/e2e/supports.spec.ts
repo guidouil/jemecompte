@@ -49,7 +49,7 @@ test('remote support needs no GPS or account, increments combined counter, and s
   await page.getByRole('button', { name: 'Je soutiens à distance', exact: true }).click();
   await expect(page.locator('#support-feedback')).toContainText(/soutien.*compté|soutenez/i);
   expect(requests).toHaveLength(1);
-  expect(Object.keys(requests[0]!).sort()).toEqual(['anonymousDayId', 'anonymousEventId', 'day', 'protocolVersion']);
+  expect(Object.keys(requests[0]!).sort()).toEqual(['admission', 'anonymousDayId', 'anonymousEventId', 'day', 'protocolVersion']);
   expect(await counts(ids[0]!)).toEqual({ presences: before.presences, supports: before.supports + 1 });
   await expect(page.locator('.counter-number')).toHaveText(new Intl.NumberFormat('fr-FR').format(before.presences + before.supports + 1));
   await expect(page.locator('.counter-caption')).toContainText('soutiens');

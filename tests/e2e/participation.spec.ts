@@ -55,7 +55,7 @@ test('one click sends no coordinates and reload keeps the same anonymous identit
   await page.getByRole('button', { name: /^JE ME COMPTE/ }).click();
   await expect(page.getByRole('button', { name: /VOUS ÊTES COMPTÉ/ })).toBeVisible();
   expect(submissions).toHaveLength(1);
-  expect(Object.keys(submissions[0] ?? {}).sort()).toEqual(['anonymousEventId', 'geofenceVersion', 'insideZone', 'protocolVersion']);
+  expect(Object.keys(submissions[0] ?? {}).sort()).toEqual(['admission', 'anonymousEventId', 'geofenceVersion', 'insideZone', 'protocolVersion']);
   expect(external).toEqual([]);
   expect(await total()).toBe(before + 1);
   await page.reload();

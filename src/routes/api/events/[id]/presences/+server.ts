@@ -1,16 +1,18 @@
 import type { RequestHandler } from './$types';
 import { participationPayloadSchema } from '#lib/shared/contracts';
 import { registerPresence } from '#lib/server/participation';
-import { guardIdentity, guardPeer, parseEventId, privateJson, readPrivateJson, writeRequest } from '#lib/server/http';
+import { guardIdentity, privateJson, privateRequest } from '#lib/server/http';
+import { withAdmission } from '#lib/shared/admission';
+import { verifyAdmission } from '#lib/server/admission';
+import { recordAdmissionEvent } from '#lib/server/integrity-metrics';
 import { record } from '#lib/server/observability';
 import { realEventsApproved } from '#lib/server/db/index';
 
-export const POST: RequestHandler = (event) => writeRequest(async () => {
-  const id = parseEventId(event.params.id);
-  guardPeer(event, id);
-  const payload = await readPrivateJson(event, participationPayloadSchema);
+export const POST: RequestHandler = (event) => privateRequest(event, withAdmission(participationPayloadSchema), async ({ payload, admission }, id) => {
   guardIdentity(id, payload.anonymousEventId);
-  const result = await registerPresence(id, payload, !realEventsApproved());
+  const verified = verifyAdmission(admission, 'presence', id, payload);
+  if (!verified) { recordAdmissionEvent(id, 'proof_rejected'); return privateJson({ status: 'admission_required' }, 409); }
+  const result = await registerPresence(id, payload, !realEventsApproved(), verified);
   if (result.status === 'counted' || result.status === 'already_counted') {
     record(result.status);
     return privateJson(result);

@@ -106,3 +106,13 @@ SvelteKit 3, Svelte 5, TypeScript strict, CSS natif, PostgreSQL et schéma Drizz
 Licence [MIT](LICENSE).
 
 Résultats détaillés et limites de la recette : [état de l’implémentation](docs/implementation-status.md). Le scénario de charge local se lance après le build avec `npm run test:load` sur la base de test dédiée.
+
+## Protection des compteurs et transparence
+
+Les nouvelles contributions et créations exigent une petite preuve de calcul locale, sans CAPTCHA, fournisseur tiers, fingerprint ou compte. Elle expire après deux minutes et ne peut être consommée qu’une fois, atomiquement avec l’écriture. La difficulté publique est de 18 bits par défaut ; le navigateur abandonne après huit secondes. Les demandes de statut restent sans calcul et ne créent aucune contribution. Cette protection augmente le coût des identités inventées sans prouver l’unicité humaine ni la présence réelle.
+
+**Appliquer `0005_admission_claims.sql` avant ce code**, puis vérifier les droits documentés dans [déploiement](docs/deployment.md). Le rôle public a besoin de `SELECT, INSERT` sur `admission_claims` ; la maintenance doit pouvoir supprimer les marqueurs expirés. Le paramètre `ADMISSION_SECRET` est optionnel pour une seule instance (secret aléatoire en mémoire à chaque redémarrage) et doit être partagé pour plusieurs instances. Les limiteurs restent locaux au processus : une seule instance est actuellement recommandée. Aucune nouvelle infrastructure payante n’est nécessaire.
+
+Les sessions admin sont révocables et la suppression exige de nouveau le mot de passe. La modération affiche présences, soutiens et total. Les métriques protégées ajoutent des cadences agrégées par événement/minute, sans IP ni identifiant individuel. Le smoke test de charge respecte désormais le plafond de 64 lecteurs SSE par réseau (32 par défaut) et résout les challenges réels ; son générateur participe donc au coût mesuré.
+
+La page `/transparence` et `/api/version` publient une identité de build et un manifeste de fichiers ; elles sont exclues du cache PWA. Le workflow de publication prépare une archive autonome, ses empreintes et une attestation GitHub. Les scripts de vérification comparent l’archive et les fichiers publics servis. Ils ne déploient rien et ne certifient pas, à eux seuls, le code exécuté sur le serveur : voir la [procédure et ses limites](docs/code-provenance.md).

@@ -1,3 +1,4 @@
+import { admittedBody } from '../helpers/admission';
 import { randomUUID } from 'node:crypto';
 import { test, expect, type Page } from '@playwright/test';
 import { Pool } from 'pg';
@@ -26,6 +27,12 @@ interface CreationBody {
   durationMinutes: number;
   publicLocationConfirmed: true;
   startsAt?: string;
+}
+
+function creationBody(value: unknown): CreationBody {
+  const { admission, ...declaration } = value as CreationBody & { admission?: { token: string; nonce: number } };
+  expect(admission).toMatchObject({ token: expect.any(String), nonce: expect.any(Number) });
+  return declaration;
 }
 
 interface ScheduleInput { date: string; time: string; utc: string }
@@ -210,6 +217,15 @@ test.afterEach(async () => {
   createdEventIds.clear();
 });
 
+test.beforeEach(async ({ request }) => {
+  // A restarted worker gets a new fixture UUID; wait out the public catalogue TTL.
+  await expect.poll(async () => {
+    const response = await request.get('/api/events');
+    const body = await response.json();
+    return body.events?.some((event: { id: string }) => event.id === discoveryId);
+  }, { timeout: 12_000 }).toBe(true);
+});
+
 test.afterAll(async () => {
   await removeOwnEvent(discoveryId);
   await pool.end();
@@ -224,7 +240,7 @@ test('creates a public map zone without GPS or a presence, then requires an expl
   page.on('request', (request) => {
     urls.push(request.url());
     if (request.url().endsWith('/api/events/create') && request.method() === 'POST') {
-      const body = request.postDataJSON() as CreationBody;
+      const body = creationBody(request.postDataJSON());
       creations.push(body);
       createdEventIds.add(body.requestId);
     }
@@ -263,7 +279,7 @@ test('creates a public map zone without GPS or a presence, then requires an expl
   await expect(page.getByRole('button', { name: /VOUS ÊTES COMPTÉ/ })).toBeVisible();
   expect(await presenceCount(body.requestId)).toBe(1);
   expect(submissions).toHaveLength(1);
-  expect(Object.keys(submissions[0]!).sort()).toEqual(['anonymousEventId', 'geofenceVersion', 'insideZone', 'protocolVersion']);
+  expect(Object.keys(submissions[0]!).sort()).toEqual(['admission', 'anonymousEventId', 'geofenceVersion', 'insideZone', 'protocolVersion']);
   const sent = JSON.stringify({ creations, submissions, urls });
   expect(sent).not.toContain(String(privateFix.longitude));
   expect(sent).not.toContain(String(privateFix.latitude));
@@ -275,7 +291,7 @@ test('retries a creation response lost after commit using the same requestId and
   const bodies: CreationBody[] = [];
   let first = true;
   await page.route('**/api/events/create', async (route) => {
-    const body = route.request().postDataJSON() as CreationBody;
+    const body = creationBody(route.request().postDataJSON());
     bodies.push(body);
     createdEventIds.add(body.requestId);
     if (first) {
@@ -340,7 +356,7 @@ test('preserves a recovered request across retryable and mode-change rejections 
     { status: 409, body: 'event_mode_changed' }];
   const requests: CreationBody[] = [];
   await page.route('**/api/events/create', async (route) => {
-    requests.push(route.request().postDataJSON() as CreationBody);
+    requests.push(creationBody(route.request().postDataJSON()));
     const rejection = rejections[requests.length - 1]!;
     await route.fulfill({ status: rejection.status, json: { status: rejection.body } });
   });
@@ -386,7 +402,7 @@ test('keeps memory retries available and warns when session storage is blocked',
   await page.addInitScript(() => Object.defineProperty(window, 'sessionStorage', { get: () => { throw new Error('Storage blocked'); } }));
   const requests: CreationBody[] = [];
   await page.route('**/api/events/create', async (route) => {
-    requests.push(route.request().postDataJSON() as CreationBody);
+    requests.push(creationBody(route.request().postDataJSON()));
     await route.fulfill({ status: 503, json: { status: 'temporarily_unavailable' } });
   });
   await prepareCreation(page, `Mémoire fictive ${randomUUID().slice(0, 8)}`);
@@ -410,7 +426,7 @@ test.describe('explicit Paris scheduling', () => {
     page.on('request', (request) => {
       const path = new URL(request.url()).pathname;
       if (path === '/api/events/create' && request.method() === 'POST') {
-        const body = request.postDataJSON() as CreationBody;
+        const body = creationBody(request.postDataJSON());
         creations.push(body);
         createdEventIds.add(body.requestId);
       }
@@ -466,7 +482,7 @@ test.describe('explicit Paris scheduling', () => {
     page.on('request', (browserRequest) => {
       const path = new URL(browserRequest.url()).pathname;
       if (path === '/api/events/create' && browserRequest.method() === 'POST') {
-        const body = browserRequest.postDataJSON() as CreationBody;
+        const body = creationBody(browserRequest.postDataJSON());
         creations.push(body);
         createdEventIds.add(body.requestId);
       }
@@ -487,9 +503,9 @@ test.describe('explicit Paris scheduling', () => {
     createdEventIds.add(rejectedId);
     const expiredResponse = await request.post('/api/events/create', {
       headers: { Origin: 'http://127.0.0.1:5175' },
-      data: { requestId: rejectedId, name, cityCode: '75056', cityName: 'Paris',
+      data: await admittedBody(request, 'create', { requestId: rejectedId, name, cityCode: '75056', cityName: 'Paris',
         publicCenter: [...publicCenter], radiusMeters: 500, durationMinutes: 240,
-        publicLocationConfirmed: true, startsAt: expired.utc }
+        publicLocationConfirmed: true, startsAt: expired.utc })
     });
     expect(expiredResponse.status()).toBe(400);
     expect(await expiredResponse.json()).toEqual({ status: 'invalid_schedule' });

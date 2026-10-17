@@ -16,8 +16,11 @@ export interface AdminEventSummary {
   status: EventStatus;
   isTest: boolean;
   countingScope: CountingScope;
+  presenceCount: string;
+  supportCount: string;
   totalCount: string;
   retainedPresences: string;
+  retainedSupports: string;
 }
 
 export interface AdminEventPage {
@@ -30,7 +33,7 @@ export interface AdminEventPage {
 interface SummaryRow {
   id: string; slug: string; name: string; city_name: string; starts_at: Date; ends_at: Date;
   status: EventStatus; is_test: boolean; counting_scope: CountingScope;
-  total_count: string; retained_presences: string;
+  presence_count: string; support_count: string; retained_presences: string; retained_supports: string;
 }
 
 /** Private administrative summaries only: no geometry, creator hash or participant identifier. */
@@ -45,8 +48,10 @@ export async function listAdminEvents(options: { page?: number; q?: string } = {
       ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3
     )
     SELECT selected.id,slug,name,city_name,starts_at,ends_at,status,is_test,counting_scope,
-      COALESCE((SELECT sum(count) FROM event_counters WHERE event_id=selected.id),0)::text AS total_count,
-      (SELECT count(*)::text FROM presences WHERE event_id=selected.id) AS retained_presences
+      COALESCE((SELECT sum(count) FROM event_counters WHERE event_id=selected.id),0)::text AS presence_count,
+      COALESCE((SELECT sum(count) FROM support_counters WHERE event_id=selected.id),0)::text AS support_count,
+      (SELECT count(*)::text FROM presences WHERE event_id=selected.id) AS retained_presences,
+      (SELECT count(*)::text FROM supports WHERE event_id=selected.id) AS retained_supports
     FROM selected ORDER BY created_at DESC,id DESC`, [q, ADMIN_EVENT_PAGE_SIZE + 1, (page - 1) * ADMIN_EVENT_PAGE_SIZE]);
   return {
     page, pageSize: ADMIN_EVENT_PAGE_SIZE, hasNext: rows.length > ADMIN_EVENT_PAGE_SIZE,
@@ -54,7 +59,9 @@ export async function listAdminEvents(options: { page?: number; q?: string } = {
       id: row.id, slug: row.slug, name: row.name, cityName: row.city_name,
       startsAt: row.starts_at.toISOString(), endsAt: row.ends_at.toISOString(), status: row.status,
       isTest: row.is_test, countingScope: row.counting_scope,
-      totalCount: row.total_count, retainedPresences: row.retained_presences
+      presenceCount: row.presence_count, supportCount: row.support_count,
+      totalCount: (BigInt(row.presence_count) + BigInt(row.support_count)).toString(),
+      retainedPresences: row.retained_presences, retainedSupports: row.retained_supports
     }))
   };
 }

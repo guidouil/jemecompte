@@ -60,16 +60,60 @@ afterEach(() => {
 });
 
 describe('shared realtime counter scheduler', () => {
+  it('bounds subscriptions per network before initial database reads and releases every reservation', async () => {
+    let finish!: (value: CounterSnapshot) => void;
+    getCounterSnapshot.mockImplementationOnce(() => new Promise<CounterSnapshot>((resolve) => { finish = resolve; }));
+    const pending = Array.from({ length: 64 }, () => realtime.counterStream(eventId, signal(), 'PRIVATE_NETWORK_SENTINEL'));
+    await expect(realtime.counterStream(eventId, signal(), 'PRIVATE_NETWORK_SENTINEL')).rejects.toMatchObject({ peerLimited: true });
+    const otherNetwork = realtime.counterStream(eventId, signal(), 'another-peer');
+    finish(snapshot());
+    const readers = (await Promise.all([...pending, otherNetwork])).map(readerFor);
+    await Promise.all(readers.map(readSnapshot));
+    expect(realtime.realtimeMetrics().connections).toBe(65);
+    for (const reader of readers) await reader.cancel();
+    expect(realtime.realtimeMetrics().connections).toBe(0);
+    const fresh = readerFor(await realtime.counterStream(eventId, signal(), 'PRIVATE_NETWORK_SENTINEL'));
+    await fresh.cancel();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('ends streams after five minutes using the shared scheduler and permits reconnection', async () => {
+    getCounterSnapshot.mockResolvedValue(snapshot());
+    const reader = readerFor(await realtime.counterStream(eventId, signal(), 'expiry-peer'));
+    await readSnapshot(reader);
+    for (let tick = 0; tick < 99; tick++) {
+      await vi.advanceTimersByTimeAsync(3_000);
+      await readSnapshot(reader);
+    }
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(await reader.read()).toEqual({ value: undefined, done: true });
+    expect(realtime.realtimeMetrics().connections).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+    const reconnected = readerFor(await realtime.counterStream(eventId, signal(), 'expiry-peer'));
+    await reconnected.cancel();
+  });
+
+  it('releases network reservations after missing events and failed initial reads', async () => {
+    getCounterSnapshot.mockResolvedValue(null);
+    for (let i = 0; i < 70; i++) expect(await realtime.counterStream(eventId, signal(), 'failure-peer')).toBeNull();
+    getCounterSnapshot.mockRejectedValue(new Error('private failure'));
+    for (let i = 0; i < 70; i++) await expect(realtime.counterStream(eventId, signal(), 'failure-peer')).rejects.toThrow('private failure');
+    getCounterSnapshot.mockResolvedValue(snapshot());
+    const reader = readerFor(await realtime.counterStream(eventId, signal(), 'failure-peer'));
+    await reader.cancel();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('closes deleted-event streams and does not resurrect a pending pre-deletion read', async () => {
     getCounterSnapshot.mockResolvedValueOnce(snapshot());
-    const reader = readerFor(await realtime.counterStream(eventId, signal()));
+    const reader = readerFor(await realtime.counterStream(eventId, signal(), 'realtime-test-peer'));
     await readSnapshot(reader);
     realtime.closeEventStreams(eventId);
     expect(await reader.read()).toEqual({ value: undefined, done: true });
     expect(realtime.realtimeMetrics()).toEqual({ connections: 0, channels: 0 });
     let finish!: (value: CounterSnapshot) => void;
     getCounterSnapshot.mockImplementationOnce(() => new Promise<CounterSnapshot>((resolve) => { finish = resolve; }));
-    const pending = realtime.counterStream(eventId, signal());
+    const pending = realtime.counterStream(eventId, signal(), 'realtime-test-peer');
     realtime.closeEventStreams(eventId);
     finish(snapshot());
     expect(await pending).toBeNull();
@@ -81,7 +125,7 @@ describe('shared realtime counter scheduler', () => {
     getCounterSnapshot.mockImplementationOnce(() => new Promise<CounterSnapshot>((resolve) => {
       resolveInitial = resolve;
     }));
-    const requests = Array.from({ length: 3 }, () => realtime.counterStream(eventId, signal()));
+    const requests = Array.from({ length: 3 }, () => realtime.counterStream(eventId, signal(), 'realtime-test-peer'));
     expect(getCounterSnapshot).toHaveBeenCalledExactlyOnceWith(eventId, true);
     resolveInitial(snapshot());
     const responses = await Promise.all(requests);
@@ -114,7 +158,7 @@ describe('shared realtime counter scheduler', () => {
     getCounterSnapshot.mockResolvedValue(snapshot());
     const firstSignal = signal();
     const removeAbortListener = vi.spyOn(firstSignal, 'removeEventListener');
-    const first = readerFor(await realtime.counterStream(eventId, firstSignal));
+    const first = readerFor(await realtime.counterStream(eventId, firstSignal, 'realtime-test-peer'));
     await readSnapshot(first);
     abortControllers[0]!.abort();
     expect((await first.read()).done).toBe(true);
@@ -122,7 +166,7 @@ describe('shared realtime counter scheduler', () => {
     expect(realtime.realtimeMetrics().connections).toBe(0);
     expect(vi.getTimerCount()).toBe(0);
 
-    const second = readerFor(await realtime.counterStream(eventId, signal()));
+    const second = readerFor(await realtime.counterStream(eventId, signal(), 'realtime-test-peer'));
     await readSnapshot(second);
     // A fresh public snapshot is reusable for a new connection without a new DB read.
     expect(getCounterSnapshot).toHaveBeenCalledTimes(1);
@@ -137,7 +181,7 @@ describe('shared realtime counter scheduler', () => {
     getCounterSnapshot.mockResolvedValue(snapshot());
     const aborted = signal();
     abortControllers[0]!.abort();
-    const reader = readerFor(await realtime.counterStream(eventId, aborted));
+    const reader = readerFor(await realtime.counterStream(eventId, aborted, 'realtime-test-peer'));
     expect((await reader.read()).done).toBe(true);
     expect(realtime.realtimeMetrics().connections).toBe(0);
     expect(vi.getTimerCount()).toBe(0);
@@ -145,8 +189,8 @@ describe('shared realtime counter scheduler', () => {
 
   it('closes all affected subscribers after a DB failure without exposing an error frame', async () => {
     getCounterSnapshot.mockResolvedValueOnce(snapshot());
-    const first = readerFor(await realtime.counterStream(eventId, signal()));
-    const second = readerFor(await realtime.counterStream(eventId, signal()));
+    const first = readerFor(await realtime.counterStream(eventId, signal(), 'realtime-test-peer'));
+    const second = readerFor(await realtime.counterStream(eventId, signal(), 'realtime-test-peer'));
     await Promise.all([readSnapshot(first), readSnapshot(second)]);
     getCounterSnapshot.mockRejectedValueOnce(new Error('SQL failure containing private diagnostics'));
     await vi.advanceTimersByTimeAsync(3_000);
@@ -159,7 +203,7 @@ describe('shared realtime counter scheduler', () => {
 
   it('does not overlap database refreshes while a previous scheduler tick is still pending', async () => {
     getCounterSnapshot.mockResolvedValueOnce(snapshot());
-    const reader = readerFor(await realtime.counterStream(eventId, signal()));
+    const reader = readerFor(await realtime.counterStream(eventId, signal(), 'realtime-test-peer'));
     await readSnapshot(reader);
     let resolveRefresh!: (value: CounterSnapshot) => void;
     getCounterSnapshot.mockImplementationOnce(() => new Promise<CounterSnapshot>((resolve) => {
@@ -176,7 +220,7 @@ describe('shared realtime counter scheduler', () => {
 
   it('disconnects a slow consumer instead of accumulating snapshots in memory', async () => {
     getCounterSnapshot.mockResolvedValue(snapshot());
-    const reader = readerFor(await realtime.counterStream(eventId, signal()));
+    const reader = readerFor(await realtime.counterStream(eventId, signal(), 'realtime-test-peer'));
     // The first frame fills the queue. The consumer deliberately does not read it before the tick.
     await vi.advanceTimersByTimeAsync(3_000);
     expect(realtime.realtimeMetrics().connections).toBe(0);
@@ -187,7 +231,7 @@ describe('shared realtime counter scheduler', () => {
 
   it('returns no stream or retained channel for a missing event', async () => {
     getCounterSnapshot.mockResolvedValue(null);
-    expect(await realtime.counterStream(eventId, signal())).toBeNull();
+    expect(await realtime.counterStream(eventId, signal(), 'realtime-test-peer')).toBeNull();
     expect(realtime.realtimeMetrics()).toEqual({ connections: 0, channels: 0 });
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -195,8 +239,8 @@ describe('shared realtime counter scheduler', () => {
   it('expires an idle mode-keyed channel while another channel keeps the scheduler active', async () => {
     const activeEventId = 'ddcc5b1e-3916-4d2e-9434-c25edbfb44d8';
     getCounterSnapshot.mockImplementation(async (id: string) => snapshot({ eventId: id }));
-    const idle = readerFor(await realtime.counterStream(eventId, signal()));
-    const active = readerFor(await realtime.counterStream(activeEventId, signal()));
+    const idle = readerFor(await realtime.counterStream(eventId, signal(), 'realtime-test-peer'));
+    const active = readerFor(await realtime.counterStream(activeEventId, signal(), 'realtime-test-peer'));
     await Promise.all([readSnapshot(idle), readSnapshot(active)]);
     abortControllers[0]!.abort();
     expect(realtime.realtimeMetrics()).toEqual({ connections: 1, channels: 2 });
@@ -210,11 +254,11 @@ describe('shared realtime counter scheduler', () => {
 
   it('does not reuse a fresh test snapshot for a new real-mode stream', async () => {
     getCounterSnapshot.mockResolvedValueOnce(snapshot());
-    const testReader = readerFor(await realtime.counterStream(eventId, signal()));
+    const testReader = readerFor(await realtime.counterStream(eventId, signal(), 'realtime-test-peer'));
     expect((await readSnapshot(testReader)).total).toBe('5');
     vi.stubEnv('REAL_EVENTS_APPROVED', 'true');
     getCounterSnapshot.mockResolvedValueOnce(null);
-    expect(await realtime.counterStream(eventId, signal())).toBeNull();
+    expect(await realtime.counterStream(eventId, signal(), 'realtime-test-peer')).toBeNull();
     expect(getCounterSnapshot.mock.calls).toEqual([[eventId, true], [eventId, false]]);
     expect(realtime.realtimeMetrics()).toEqual({ connections: 1, channels: 1 });
   });

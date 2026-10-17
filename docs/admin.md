@@ -15,7 +15,9 @@ Une configuration absente ou invalide ferme l’accès. Utiliser l’origine HTT
 
 En développement, les pages ouvertes avec `localhost` ou `127.0.0.1` sont redirigées vers l’hôte local déclaré dans `ORIGIN`, à protocole et port identiques. Cela aligne l’adresse du formulaire, le cookie et le contrôle d’origine. Recharger un onglet déjà ouvert sur l’autre adresse avant de se connecter. Les requêtes POST restent strictement limitées à l’origine configurée.
 
-La session expire après huit heures. Son cookie est `HttpOnly`, `SameSite=Strict`, limité au chemin `/gui`, et `Secure` en HTTPS. Il ne doit pas être stocké dans `localStorage`. La déconnexion efface le cookie avec le même chemin. La signature est liée à l’empreinte du mot de passe et au secret : remplacer l’une ou l’autre variable invalide automatiquement toutes les sessions existantes.
+La session expire après une heure au maximum ou quinze minutes sans requête privée authentifiée. Son cookie est `HttpOnly`, `SameSite=Strict`, limité au chemin `/gui`, et `Secure` en HTTPS. Il ne doit pas être stocké dans `localStorage`. La déconnexion révoque la session côté serveur puis efface le cookie ; une copie du jeton ne fonctionne plus. Une nouvelle connexion révoque le précédent jeton de ce navigateur. La signature est liée à l’empreinte du mot de passe et au secret : remplacer l’une ou l’autre variable invalide automatiquement toutes les sessions existantes.
+
+Les sessions actives restent dans une mémoire bornée à 128 sessions, sans base ou service supplémentaire. Un redémarrage les invalide et oblige à se reconnecter. Ce fonctionnement exige **une seule instance applicative** ; avant d’en ajouter, partager le registre et les limites de connexion dans un stockage adapté. Le mot de passe est demandé à nouveau à chaque suppression. La connexion et la suppression ont chacune une limite de cinq tentatives par réseau et par minute ; elles partagent un plafond de trente tentatives par minute et un seul calcul scrypt simultané. Un jeton volé seul ne suffit donc pas à supprimer un comptage.
 
 ## Rôle PostgreSQL administratif
 
@@ -26,7 +28,8 @@ Prévoir `CONNECT` sur la base, `USAGE` sur le schéma concerné et les droits l
 - `SELECT` sur les colonnes de métadonnées d’`events` utilisées par la liste, la recherche et le verrouillage ; `UPDATE(updated_at)` sur `events` permet le verrouillage `FOR UPDATE` sans donner de droit de modification sur les chiffres.
 - `SELECT(event_id)` sur `presences`, pour compter et sélectionner les lignes à supprimer ; aucun accès à `anonymous_event_id` n’est nécessaire.
 - `SELECT(event_id, count)` sur `event_counters`, pour compter et additionner les chiffres à supprimer.
-- `DELETE` sur `events`, `presences` et `event_counters`.
+- `SELECT(event_id)` sur `supports` et `SELECT(event_id, count)` sur `support_counters`, pour afficher et supprimer les soutiens, sans lire leurs identifiants individuels.
+- `DELETE` sur `events`, `presences`, `event_counters`, `supports` et `support_counters`. Le backoffice n’a besoin d’aucun droit sur `daily_support_claims`.
 - `SELECT(event_id)` et `UPDATE(event_id)` sur `admin_audit`, pour détacher l’historique avant la suppression de l’événement ; `INSERT` sur les colonnes nécessaires au nouvel audit.
 - `USAGE` sur la séquence de l’identifiant d’`admin_audit`, pour enregistrer cet audit.
 
@@ -34,7 +37,7 @@ Les métadonnées d’`events` lues actuellement sont `id`, `slug`, `name`, `cit
 
 ## Suppression
 
-Relire le nom, la ville et l’identité publique du comptage avant de confirmer sa suppression en recopiant son lien court (`slug`). L’opération serveur vérifie la session et l’origine de la requête POST. Elle supprime atomiquement l’événement, toutes ses participations et ses compteurs associés ; elle ne crée aucune présence et ne réaffecte pas les participations à un autre comptage. La trace administrative est conservée sans identifiant de participant.
+La liste distingue les présences, les soutiens à distance et leur total ; les quantités individuelles encore conservées sont indiquées séparément. Relire le nom, la ville et l’identité publique du comptage avant de confirmer sa suppression en recopiant son lien court (`slug`) et en saisissant le mot de passe privé. L’opération serveur vérifie la session, le mot de passe et l’origine de la requête POST. Elle supprime atomiquement l’événement, toutes ses participations et ses compteurs associés ; elle ne crée aucune présence et ne réaffecte pas les participations à un autre comptage. La trace administrative est conservée sans identifiant de participant. Le mot de passe de confirmation n’est jamais renvoyé dans les données d’action et le champ est vidé après réponse.
 
 Cette interface supprime uniquement un comptage entier avec son ensemble de participations. Elle ne liste pas les participants et ne permet pas de supprimer individuellement une participation.
 

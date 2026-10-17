@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { AdmissionClientError, getAdmissionProof } from '#lib/client/admission';
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import CreationMap from '#lib/components/CreationMap.svelte';
@@ -276,10 +277,12 @@
     }
     submitting = true; message = '';
     const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 12_000);
+    const timeout = window.setTimeout(() => controller.abort(), 20_000);
     try {
+      const declaration = JSON.parse(pendingBody!);
+      const admission = await getAdmissionProof('create', undefined, declaration, controller.signal);
       const response = await fetch('/api/events/create', { method: 'POST', headers: { 'content-type': 'application/json' },
-        cache: 'no-store', body: pendingBody, signal: controller.signal });
+        cache: 'no-store', body: JSON.stringify({ ...declaration, admission }), signal: controller.signal });
       const result = await response.json() as { status: string; event?: PublicEvent };
       if (response.ok && result.event?.slug && result.event.id === pendingDraft?.payload.requestId && ['created', 'already_created'].includes(result.status)) {
         createdEvent = result.event;
@@ -301,7 +304,7 @@
         confirmAbandon = false;
         draftNotice = '';
         confirmed = false;
-        message = result.status === 'invalid_schedule'
+        message = result.status === 'invalid_location' ? 'Le lieu choisi est hors de la commune sélectionnée. Vérifiez la commune et le point public sur la carte.' : result.status === 'invalid_schedule'
           ? 'Ces horaires ne permettent pas d’ouvrir le comptage. Modifiez la date, l’heure de début ou la durée, puis vérifiez de nouveau.'
           : 'Vérifiez le nom, la ville, le périmètre et les horaires du comptage.';
       } else if (response.status === 503 && result.status === 'temporarily_unavailable') {
@@ -309,14 +312,16 @@
       } else if (response.status === 429) {
         message = 'Trop de créations ont été demandées. Attendez avant de réessayer ; vérifiez aussi les rassemblements existants.';
       } else if (response.status === 409) {
-        message = result.status === 'event_mode_changed'
+        message = result.status === 'admission_required' ? 'La protection de la demande a expiré. Réessayez ici : la même demande est conservée.' : result.status === 'event_mode_changed'
           ? 'Le mode de collecte a changé depuis cette demande. Elle reste distincte des comptages actuels. Vérifiez le catalogue avant de recommencer.'
           : 'Cette demande correspond déjà à un autre comptage. Retrouvez-le dans la recherche avant de recommencer.';
       } else {
         message = 'La confirmation n’est pas arrivée. Réessayez ici : la même demande sera conservée pour éviter de créer un doublon.';
       }
-    } catch {
-      message = 'La confirmation n’est pas arrivée. Réessayez ici : la même demande sera conservée pour éviter de créer un doublon.';
+    } catch (failure) {
+      message = failure instanceof AdmissionClientError && failure.code === 'admission_timeout'
+        ? 'Votre appareil est occupé. Réessayez pour terminer la vérification locale ; la même demande est conservée.'
+        : 'La confirmation n’est pas arrivée. Réessayez ici : la même demande sera conservée pour éviter de créer un doublon.';
     } finally { clearTimeout(timeout); submitting = false; }
   }
 </script>

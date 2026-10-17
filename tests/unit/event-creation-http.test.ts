@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocked = vi.hoisted(() => ({ create: vi.fn(), allow: vi.fn() }));
+const mocked = vi.hoisted(() => ({ create: vi.fn(), allow: vi.fn(), verify: vi.fn() }));
+vi.mock('../../src/lib/server/admission', () => ({ verifyAdmission: mocked.verify }));
 vi.mock('../../src/lib/server/event-creation', () => ({ createPublicEvent: mocked.create }));
 vi.mock('../../src/lib/server/event-creation-abuse', () => ({ creationLimiter: { allow: mocked.allow } }));
 import { POST } from '../../src/routes/api/events/create/+server';
@@ -24,22 +25,30 @@ beforeEach(() => {
   vi.stubEnv('ORIGIN', 'http://localhost');
   vi.stubEnv('REAL_EVENTS_APPROVED', 'false');
   vi.clearAllMocks();
+  mocked.verify.mockReturnValue('verified-work-sentinel');
   mocked.allow.mockReturnValue({ allowed: true, retryAfter: 3600 });
   mocked.create.mockResolvedValue({ status: 'created', event: { id: body.requestId, slug: 'fictif', isTest: true } });
 });
 afterEach(() => vi.unstubAllEnvs());
 
 describe('public creation endpoint', () => {
+  it('rejects absent, expired or invalid work before creating anything', async () => {
+    mocked.verify.mockReturnValueOnce(null);
+    const response = await POST(request(body));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ status: 'admission_required' });
+    expect(mocked.create).not.toHaveBeenCalled();
+  });
   it('returns a created event without passing the network signal to the service', async () => {
     const response = await POST(request(body));
     expect(response.status).toBe(201);
-    expect(mocked.create).toHaveBeenCalledExactlyOnceWith(body);
+    expect(mocked.create).toHaveBeenCalledExactlyOnceWith(body, 'verified-work-sentinel');
     expect(await response.json()).toMatchObject({ status: 'created', event: { id: body.requestId, isTest: true } });
   });
   it('accepts a commune code without accepting a browser-supplied circle or geometry', async () => {
     const response = await POST(request(cityBody));
     expect(response.status).toBe(201);
-    expect(mocked.create).toHaveBeenCalledExactlyOnceWith(cityBody);
+    expect(mocked.create).toHaveBeenCalledExactlyOnceWith(cityBody, 'verified-work-sentinel');
     mocked.create.mockClear();
     for (const fields of [
       { publicCenter: [2.36, 48.86] }, { radiusMeters: 500 },
@@ -80,18 +89,24 @@ describe('public creation endpoint', () => {
     const response = await POST(request(body));
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({ status: 'event_mode_changed' });
-    expect(mocked.create).toHaveBeenCalledExactlyOnceWith(body);
+    expect(mocked.create).toHaveBeenCalledExactlyOnceWith(body, 'verified-work-sentinel');
   });
   it('normalizes an explicit zoned start before calling the service', async () => {
     const response = await POST(request({ ...body, startsAt: '2030-07-15T15:30:00+02:00' }));
     expect(response.status).toBe(201);
-    expect(mocked.create).toHaveBeenCalledExactlyOnceWith({ ...body, startsAt: '2030-07-15T13:30:00.000Z' });
+    expect(mocked.create).toHaveBeenCalledExactlyOnceWith({ ...body, startsAt: '2030-07-15T13:30:00.000Z' }, 'verified-work-sentinel');
   });
   it('returns a domain error when a new schedule has already ended', async () => {
     mocked.create.mockResolvedValueOnce({ status: 'invalid_schedule' });
     const response = await POST(request({ ...body, startsAt: '2000-01-01T00:00:00Z' }));
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ status: 'invalid_schedule' });
+  });
+  it('returns a validation error for a public point outside the selected commune', async () => {
+    mocked.create.mockResolvedValueOnce({ status: 'invalid_location' });
+    const response = await POST(request(body));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ status: 'invalid_location' });
   });
   it('rejects an unzoned start before applying creation limits or calling the service', async () => {
     expect((await POST(request({ ...body, startsAt: '2030-07-15T15:30:00' }))).status).toBe(400);
