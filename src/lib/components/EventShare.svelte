@@ -153,27 +153,27 @@
   .share-actions { display: flex; flex-wrap: wrap; gap: 10px; }
   .share-button {
     min-height: 48px; padding: 12px 17px; border: 1px solid var(--line);
-    background: transparent; color: var(--ink); font-size: 13px; line-height: 1.5; font-weight: 600;
+    background: var(--surface); color: var(--ink); border-radius: 12px; font-size: 13px; line-height: 1.5; font-weight: 600;
   }
-  .share-button:not(:disabled):hover { background: var(--soft-green); border-color: var(--green); }
+  .share-button:not(:disabled):hover { background: var(--surface-soft); border-color: var(--ink); }
   .share-button:disabled { opacity: 0.65; }
-  .share-button:focus-visible, .qr-link:focus-visible { outline: 3px solid var(--green); outline-offset: 3px; }
-  .share-status { min-height: 1.6em; margin-top: 8px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+  .share-button:focus-visible, .qr-link:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+  .share-status { min-height: 1.6em; margin-top: 12px; color: var(--ink); font-size: 13px; line-height: 1.6; }
   .manual-link { margin-top: 10px; }
   .manual-link label { display: block; margin-bottom: 7px; font-size: 12px; font-weight: 600; }
   .manual-link input {
     display: block; width: 100%; min-width: 0; min-height: 48px; padding: 12px;
-    border: 1px solid var(--line); background: var(--paper); color: var(--ink); font-size: 14px;
+    border: 1px solid var(--line-strong); background: var(--paper); color: var(--ink); border-radius: 12px; font-size: 14px;
   }
-  .qr-card { margin-top: 14px; padding: 14px; border: 1px solid var(--line); text-align: center; }
+  .qr-card { margin-top: 16px; padding: 22px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface-soft); text-align: center; }
   .qr-heading { margin: 0 0 8px; font-size: 14px; font-weight: 700; }
-  .qr-image { display: block; width: 240px; max-width: 100%; height: auto; margin: 0 auto; background: #fff; }
+  .qr-image { display: block; width: 240px; max-width: 100%; height: auto; margin: 0 auto; background: var(--qr-paper); }
   .qr-description { margin: 10px 0; font-size: 13px; line-height: 1.6; }
-  .qr-link { display: block; overflow-wrap: anywhere; color: var(--green); font-size: 12px; line-height: 1.6; }
+  .qr-link { display: block; min-height: 44px; padding: 10px 0; overflow-wrap: anywhere; color: var(--ink); font-size: 12px; line-height: 1.6; }
   .print-button { margin-top: 14px; max-width: 100%; }
-  .event-report { margin-top: 18px; }
-  .event-report a { display: inline-flex; align-items: center; min-height: 44px; color: var(--green); font-size: 13px; }
-  .event-report a:focus-visible { outline: 3px solid var(--green); outline-offset: 3px; }
+  .event-report { margin-top: 22px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .event-report a { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink); font-size: 13px; }
+  .event-report a:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
   .event-report p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
   :global(.event-qr-print-frame) { position: fixed; width: 1px; height: 1px; left: -10000px; top: 0; border: 0; }
   @media (max-width: 480px) {

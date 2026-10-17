@@ -184,19 +184,19 @@
 <style>
   .admin-page { max-width: 1020px; margin: 0 auto; padding: 38px 0 70px; }
   .admin-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
-  .admin-heading .eyebrow { color: var(--green); }
+  .admin-heading .eyebrow { color: var(--accent-ink); }
   h1 { font-size: clamp(36px, 4.8vw, 60px); line-height: 1.08; letter-spacing: -2.6px; margin-top: 12px; }
   .admin-heading form { flex-shrink: 0; }
   .admin-intro { max-width: 690px; margin-top: 22px; color: var(--muted); font-size: 15px; }
   .admin-error { color: var(--error); }
-  .admin-success { border-left: 3px solid var(--green); }
+  .admin-success { border-left: 3px solid var(--accent-ink); }
   .login-form { max-width: 440px; margin-top: 34px; padding: 26px; border: 1px solid var(--line); }
   h2 { font-size: 23px; line-height: 1.3; letter-spacing: -0.5px; }
   label { display: block; margin: 19px 0 8px; font-size: 13px; font-weight: 700; line-height: 1.6; }
-  input:not([type=hidden]) { display: block; min-height: 50px; width: 100%; min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 0; background: var(--paper); color: var(--ink); font-size: 16px; }
+  input:not([type=hidden]) { display: block; min-height: 50px; width: 100%; min-width: 0; padding: 12px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--paper); color: var(--ink); font-size: 16px; }
   input[aria-invalid=true] { border-color: var(--error); }
   .field-help { margin-top: 9px; color: var(--muted); font-size: 12px; }
-  .primary-button { display: inline-flex; justify-content: center; align-items: center; min-height: 50px; margin-top: 23px; padding: 13px 20px; background: var(--green); color: var(--button-ink); border: 1px solid var(--green); font-weight: 700; font-size: 14px; }
+  .primary-button { display: inline-flex; justify-content: center; align-items: center; min-height: 50px; margin-top: 23px; padding: 13px 20px; background: var(--accent); color: var(--button-ink); border: 1px solid var(--accent-ink); font-weight: 700; font-size: 14px; }
   .primary-button:disabled, .delete-button:disabled { opacity: 0.6; }
   .admin-search { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px 18px; margin-top: 35px; padding: 22px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
   .search-field { flex: 1 1 320px; }
@@ -208,10 +208,10 @@
   .admin-event { padding: 25px; border: 1px solid var(--line); min-width: 0; }
   .event-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
   .event-heading > div { min-width: 0; }
-  .event-city { color: var(--green); font-size: 12px; font-weight: 700; }
+  .event-city { color: var(--accent-ink); font-size: 12px; font-weight: 700; }
   h3 { font-size: 20px; line-height: 1.4; letter-spacing: -0.4px; margin: 7px 0 0; overflow-wrap: anywhere; }
   .admin-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
-  .admin-badges span { padding: 5px 8px; background: var(--soft-green); color: var(--ink); font-size: 11px; line-height: 1.4; }
+  .admin-badges span { padding: 5px 8px; background: var(--surface-soft); color: var(--ink); font-size: 11px; line-height: 1.4; }
   .event-schedule { margin-top: 14px; font-size: 12px; }
   .event-slug { margin-top: 14px; font-size: 12px; }
   .event-slug > span { color: var(--muted); margin-right: 12px; }

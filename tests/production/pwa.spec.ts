@@ -45,7 +45,7 @@ test('built PWA survives a reload offline and confirms only after reconnection',
   })).toBe(true);
   await context.setOffline(true);
   await page.reload();
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('COMPTE');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Recette PWA fictive');
   await expect(page.getByRole('button', { name: 'VOUS ÊTES HORS LIGNE' })).toBeDisabled();
   expect((await pool.query('SELECT 1 FROM presences WHERE event_id=$1', [id])).rowCount).toBe(0);
   await context.setOffline(false);

@@ -70,13 +70,13 @@
 </section>
 
 <style>
-  .event-perimeter { margin-top: 16px; padding-top: 9px; border-top: 1px solid var(--line); }
+  .event-perimeter { margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--line); }
   .perimeter-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 15px; }
-  .perimeter-header h3 { font-size: 12px; font-weight: 700; margin: 0; }
-  .perimeter-header .text-button { display: inline-flex; align-items: center; gap: 9px; font-size: 11px; }
-  .perimeter-summary, .position-note { color: var(--muted); font-size: 11px; line-height: 1.7; }
+  .perimeter-header h3 { font-size: 13px; font-weight: 700; margin: 0; }
+  .perimeter-header .text-button { display: inline-flex; align-items: center; gap: 9px; font-size: 12px; }
+  .perimeter-summary, .position-note { color: var(--muted); font-size: 12px; line-height: 1.7; }
   .position-note { margin-top: 4px; }
-  .map-loading, .map-import-error { margin-top: 12px; font-size: 12px; line-height: 1.7; padding: 15px; background: var(--notice); }
-  .map-import-error .secondary-button { margin-top: 12px; }
+  .map-loading, .map-import-error { margin-top: 14px; border: 1px solid var(--line); border-radius: 14px; font-size: 13px; line-height: 1.7; padding: 18px; background: var(--surface-soft); }
+  .map-import-error .secondary-button { margin-top: 14px; }
   @media (max-width: 420px) { .summary-separator { display: block; font-size: 0; } }
 </style>

@@ -60,7 +60,7 @@
       // Display the published geometry directly, including custom team perimeters.
       const options: GeoJSONOptions & { smoothFactor: number } = {
         interactive: false, smoothFactor: 0,
-        style: { color: '#125b39', weight: 3, fillColor: '#42b976', fillOpacity: 0.22, className: 'public-event-perimeter' }
+        style: { weight: 3, fillOpacity: 0.2, className: 'public-event-perimeter' }
       };
       outline = library.geoJSON(event.geofence, options).addTo(map);
       if (!outline.getBounds().isValid()) throw new Error('Invalid public perimeter.');
@@ -126,20 +126,22 @@
   <button type="button" class="text-button" disabled={!ready} onclick={recenter}>Recentrer le périmètre</button>
   {#if ready && tilesFailed && online && !beyondTileScale}<button type="button" class="text-button" onclick={retryTiles}>Réessayer le fond de carte</button>{/if}
 </div>
-<p id={`${uid}-help`} class="map-help"><span class="legend-line" aria-hidden="true"></span> Le contour vert indique le périmètre public. Au clavier : flèches pour déplacer la carte, + et − pour zoomer.</p>
+<p id={`${uid}-help`} class="map-help"><span class="legend-line" aria-hidden="true"></span> Le contour coloré indique le périmètre public. Au clavier : flèches pour déplacer la carte, + et − pour zoomer.</p>
 
 <style>
-  .public-map-wrapper { position: relative; margin-top: 13px; border: 1px solid var(--line); isolation: isolate; background: #e5e9e1; }
-  .public-perimeter-map { width: 100%; height: 310px; background: #e5e9e1; color: #18251d; font-family: inherit; }
-  .map-placeholder { position: absolute; inset: 0; z-index: 500; display: flex; flex-direction: column; justify-content: center; gap: 16px; padding: 22px; background: #e5e9e1; color: #18251d; font-size: 12px; line-height: 1.7; }
-  .map-placeholder .secondary-button { align-self: flex-start; color: #18251d; border-color: #18251d; }
-  .map-feedback { color: var(--muted); font-size: 11px; line-height: 1.7; margin-top: 10px; }
+  .public-map-wrapper { position: relative; margin-top: 14px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; isolation: isolate; background: var(--map-paper); }
+  .public-perimeter-map { width: 100%; height: 310px; background: var(--map-paper); color: var(--map-ink); font-family: inherit; }
+  .map-placeholder { position: absolute; inset: 0; z-index: 500; display: flex; flex-direction: column; justify-content: center; gap: 16px; padding: 22px; background: var(--surface-soft); color: var(--ink); font-size: 13px; line-height: 1.7; }
+  .map-placeholder .secondary-button { align-self: flex-start; }
+  .map-feedback { color: var(--muted); font-size: 12px; line-height: 1.7; margin-top: 12px; }
   .map-actions { display: flex; flex-wrap: wrap; gap: 0 18px; }
-  .map-actions .text-button { font-size: 11px; }
-  .map-help { color: var(--muted); font-size: 10px; line-height: 1.7; }
-  .legend-line { display: inline-block; width: 18px; height: 3px; background: #125b39; vertical-align: middle; margin-right: 4px; }
-  .public-perimeter-map :global(.leaflet-control-attribution) { font-size: 10px; line-height: 1.5; color: #222; }
-  .public-perimeter-map :global(.leaflet-control-attribution a) { color: #125b39; }
-  .public-perimeter-map :global(.leaflet-control-zoom a) { width: 44px; height: 44px; line-height: 44px; color: #18251d; background: #fff; }
+  .map-actions .text-button { font-size: 12px; }
+  .map-help { color: var(--muted); font-size: 11px; line-height: 1.7; }
+  .legend-line { display: inline-block; width: 18px; height: 3px; border-radius: 2px; background: var(--ink); vertical-align: middle; margin-right: 4px; }
+  .public-perimeter-map :global(.public-event-perimeter) { stroke: var(--map-line); fill: var(--map-fill); }
+  .public-perimeter-map :global(.leaflet-control-attribution) { font-size: 10px; line-height: 1.5; color: var(--map-ink); background: var(--map-control); }
+  .public-perimeter-map :global(.leaflet-control-attribution a) { color: var(--map-ink); }
+  .public-perimeter-map :global(.leaflet-control-zoom) { border: 1px solid var(--map-line); border-radius: 10px; overflow: hidden; }
+  .public-perimeter-map :global(.leaflet-control-zoom a) { width: 44px; height: 44px; line-height: 44px; color: var(--map-ink); background: var(--map-control); }
   @media (max-width: 700px) { .public-perimeter-map { height: 285px; } }
 </style>

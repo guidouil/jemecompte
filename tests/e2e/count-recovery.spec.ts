@@ -209,19 +209,19 @@ test('shows the national gathering total on home after counting while keeping ev
     expect(await total()).toBe(before + 1);
 
     await page.goto('/');
-    const gatherings = page.locator('.national-count[data-counting-scope="gathering"]');
+    const gatherings = page.locator('.counter-column[data-counting-scope="gathering"]');
     const cities = page.locator('.national-count[data-counting-scope="city"]');
     // The national SSR read has a three-second cache, so reload until the accepted write is visible.
     await expect.poll(async () => {
       await page.reload();
-      return gatherings.locator('strong').textContent();
+      return gatherings.locator('.counter-number').textContent();
     }, { timeout: 10_000 }).toBe(formatCount(snapshot.nationalTotal));
     await expect(page.locator('.counter-number')).toHaveText(formatCount(snapshot.nationalTotal));
     await expect(page.locator('.counter-number')).not.toHaveAttribute('aria-label', 'Aucun comptage sélectionné');
     await expect(page.locator('.counter-heading')).toContainText('RASSEMBLEMENTS LOCALISÉS');
     await expect(page.locator('.counter-caption')).toContainText('participations et soutiens');
     await expect(page.locator('.counter-caption')).toContainText('France');
-    await expect(page.locator('.national-count')).toHaveCount(2);
+    await expect(page.locator('.national-count')).toHaveCount(1);
     await expect(cities.locator('strong')).toHaveText(formatCount(cityNationalTotal));
     await expect(page.locator('.national-families-note')).toContainText('Une même personne peut contribuer aux deux familles');
     await expect(page.locator('.counter-footnote')).not.toContainText('après le choix d’un comptage');

@@ -331,7 +331,7 @@
 <section class="creation-page" aria-labelledby="creation-title">
   <a class="back-link" href="/#rassemblements">← Rechercher un rassemblement</a>
   <p class="eyebrow">OUVRIR UN COMPTAGE</p>
-  <h1 id="creation-title">Une ville. Un lieu.<br />Un comptage collectif<span class="title-dot">.</span></h1>
+  <h1 id="creation-title">Un lieu nous réunit.<br />Ouvrons un comptage</h1>
   <p class="creation-lead">Choisissez toute une commune ou un lieu de rassemblement. Vérifiez les comptages existants avant d’en créer un autre. Créer une zone ne compte encore personne.</p>
 
   {#if !data.serviceAvailable}<p class="notice" role="status">Le service est momentanément indisponible. Revenez lorsque la connexion au service est rétablie.</p>{/if}
@@ -341,20 +341,20 @@
   {#if storageNotice}<p class="notice" role="status">{storageNotice}</p>{/if}
 
   <ol class="steps" aria-label="Étapes de création">
-    <li aria-current={step === 1 ? 'step' : undefined}><span>01</span> Le périmètre</li>
-    <li aria-current={step === 2 ? 'step' : undefined}><span>02</span> Le comptage</li>
+    <li class:completed={step > 1} aria-current={step === 1 ? 'step' : undefined}><span>01</span> Le périmètre</li>
+    <li class:completed={step > 2} aria-current={step === 2 ? 'step' : undefined}><span>02</span> Le comptage</li>
     <li aria-current={step === 3 ? 'step' : undefined}><span>03</span> Vérifier</li>
   </ol>
 
-  <div class="wizard">
+  <div class="wizard" aria-busy={submitting}>
     <div class="wizard-heading"><p class="eyebrow">ÉTAPE {step} SUR 3</p><h2 bind:this={heading} tabindex="-1">{recoveredRequest ? 'Reprendre la même demande' : step === 1 ? isCity ? 'Choisissez une ville' : 'Choisissez un lieu public' : step === 2 ? 'Délimitez le comptage' : 'Vérifiez avant de publier'}</h2></div>
 
     {#if step === 1}
       <fieldset class="scope-settings">
         <legend>Périmètre du comptage</legend>
         <div class="start-options">
-          <label class="start-option" class:selected={isCity}><input type="radio" name="counting-scope" value="city" checked={isCity} disabled={!ready || Boolean(pendingBody)} onchange={() => chooseScope('city')} /><span>Commune entière</span></label>
-          <label class="start-option" class:selected={!isCity}><input type="radio" name="counting-scope" value="gathering" checked={!isCity} disabled={!ready || Boolean(pendingBody)} onchange={() => chooseScope('gathering')} /><span>Rassemblement localisé</span></label>
+          <label class="start-option" class:selected={isCity}><input type="radio" name="counting-scope" value="city" aria-label="Commune entière" aria-describedby="scope-city-help" checked={isCity} disabled={!ready || Boolean(pendingBody)} onchange={() => chooseScope('city')} /><span><strong>Commune entière</strong><small id="scope-city-help">Tout le contour administratif</small></span></label>
+          <label class="start-option" class:selected={!isCity}><input type="radio" name="counting-scope" value="gathering" aria-label="Rassemblement localisé" aria-describedby="scope-gathering-help" checked={!isCity} disabled={!ready || Boolean(pendingBody)} onchange={() => chooseScope('gathering')} /><span><strong>Rassemblement localisé</strong><small id="scope-gathering-help">Une zone autour d’un lieu public</small></span></label>
         </div>
       </fieldset>
       <p class="guidance">{isCity ? 'Cherchez votre ville : son contour administratif sera chargé automatiquement, sans rayon à régler.' : 'Cherchez votre ville, puis touchez la place ou le lieu du rassemblement sur la carte.'} Votre GPS n’est pas utilisé pour créer cette zone.</p>
@@ -428,7 +428,7 @@
       <label class="confirmation"><input type="checkbox" bind:checked={confirmed} disabled={Boolean(pendingBody)} /><span>{isCity ? `Je confirme un comptage dans toute la commune de ${city?.name} et j’accepte de publier ce périmètre et ces informations.` : 'Je confirme que cette zone correspond au rassemblement et j’accepte de publier ce lieu et ces informations.'}</span></label>
       <p class="publication-note">Ce comptage sera indiqué « Ouvert par un participant ». Un contrôle GPS effectué dans le navigateur ne certifie pas la présence humaine.</p>
     {/if}
-    <p class="submission-message" role="status" aria-live="polite">{message}</p>
+    <p class="submission-message" class:submission-success={Boolean(createdEvent)} role="status" aria-live="polite">{message}</p>
     {#if pendingDraft && !createdEvent}
       {#if confirmAbandon}
         <div class="notice abandon-confirmation">
@@ -449,80 +449,95 @@
 </section>
 
 <style>
-  .creation-page { max-width: 860px; margin: auto; padding-bottom: 64px; }
-  .creation-page > .back-link { margin-bottom: 28px; margin-top: 20px; }
-  .creation-page > .eyebrow { color: var(--green); }
-  h1 { font-size: clamp(38px, 5vw, 64px); line-height: 1.06; letter-spacing: -2.5px; margin-top: 16px; }
-  .creation-lead { margin-top: 24px; max-width: 650px; font-size: 17px; color: var(--muted); }
-  .steps { list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 32px 0; padding: 0; }
-  .steps li { border-top: 2px solid var(--line); padding-top: 12px; color: var(--muted); font-size: 13px; }
-  .steps li[aria-current] { border-color: var(--green); color: var(--ink); font-weight: 700; }
-  .steps span { display: inline-block; margin-right: 10px; color: var(--green); font-variant-numeric: tabular-nums; }
-  .wizard { padding: 30px; border: 1px solid var(--line); }
-  .wizard-heading > p { color: var(--green); }
-  h2 { font-size: 27px; line-height: 1.25; letter-spacing: -0.7px; margin-top: 8px; }
+  .creation-page { max-width: 860px; margin: auto; padding: 0 0 72px; }
+  .creation-page > .back-link { margin-bottom: 30px; margin-top: 24px; }
+  .creation-page > .eyebrow { color: var(--ink); }
+  h1 { font-size: clamp(38px, 5.5vw, 66px); line-height: 1.06; letter-spacing: -2.5px; margin-top: 16px; text-wrap: balance; }
+  .creation-lead { margin-top: 24px; max-width: 670px; font-size: 18px; line-height: 1.65; color: var(--muted); }
+  .steps { list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 34px 0 24px; padding: 0; }
+  .steps li { display: flex; align-items: center; gap: 10px; padding: 13px 0; color: var(--muted); font-size: 13px; }
+  .steps li[aria-current] { color: var(--ink); font-weight: 700; }
+  .steps span { display: inline-grid; place-items: center; flex-shrink: 0; width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 50%; font-variant-numeric: tabular-nums; font-size: 11px; }
+  .steps li[aria-current] span { border-color: var(--accent); background: var(--accent); color: var(--button-ink); }
+  .steps .completed span { border-color: var(--ink); background: var(--surface-soft); color: var(--ink); }
+  .wizard { padding: 34px; border: 1px solid var(--line); border-radius: 28px; background: var(--surface); }
+  .wizard-heading { padding-bottom: 22px; border-bottom: 1px solid var(--line); }
+  .wizard-heading > p { color: var(--muted); }
+  h2 { font-size: clamp(25px, 3.1vw, 32px); line-height: 1.2; letter-spacing: -1px; margin-top: 8px; text-wrap: balance; }
   h2:focus { outline: none; }
-  .guidance { margin-top: 16px; font-size: 14px; color: var(--muted); }
-  .city-search, .field { margin-top: 23px; }
-  label, .field label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 9px; }
-  input:not([type=checkbox]):not([type=radio]), select { width: 100%; min-width: 0; min-height: 50px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); padding: 12px; font: inherit; font-size: 16px; border-radius: 0; }
+  .guidance { margin-top: 20px; font-size: 14px; line-height: 1.7; color: var(--muted); }
+  .city-search, .field { margin-top: 25px; }
+  label, .field label { display: block; font-size: 14px; font-weight: 700; margin-bottom: 9px; }
+  input:not([type=checkbox]):not([type=radio]), select { width: 100%; min-width: 0; min-height: 54px; border: 1px solid var(--line-strong); background: var(--paper); color: var(--ink); padding: 14px; font: inherit; font-size: 16px; border-radius: 12px; transition: border-color 120ms; }
+  input:not([type=checkbox]):not([type=radio]):hover, select:hover { border-color: var(--muted); }
+  input[aria-invalid=true], select[aria-invalid=true] { border-color: var(--error); }
   .search-row { display: flex; gap: 10px; }
   .search-row input { flex: 1; }
-  .field-message { font-size: 12px; color: var(--muted); margin-top: 10px; }
-  .city-results { padding: 0; list-style: none; margin: 12px 0 0; }
-  .city-results button { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; padding: 14px; min-height: 60px; width: 100%; text-align: left; background: transparent; color: var(--ink); border: 1px solid var(--line); border-bottom: 0; }
-  .city-results li:last-child button { border-bottom: 1px solid var(--line); }
-  .city-results button:hover { background: var(--soft-green); }
+  .search-row button { border-radius: 12px; }
+  .field-message { font-size: 13px; color: var(--muted); margin-top: 12px; }
+  .field-message:empty { display: none; }
+  .city-results { padding: 0; list-style: none; margin: 14px 0 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .city-results button { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; padding: 16px; min-height: 70px; width: 100%; text-align: left; background: var(--paper); color: var(--ink); border: 0; border-bottom: 1px solid var(--line); }
+  .city-results li:last-child button { border-bottom: 0; }
+  .city-results button:hover { background: var(--surface-soft); }
   .city-results small { grid-column: 1; font-size: 11px; color: var(--muted); }
   .city-results button > span { grid-column: 2; grid-row: 1 / 3; align-self: center; font-size: 24px; }
-  .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  .field > small { display: block; margin-top: 8px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .settings-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22px; }
+  .field > small { display: block; margin-top: 8px; font-size: 12px; color: var(--muted); line-height: 1.7; }
   .radius-input { position: relative; }
   .radius-input input { padding-right: 94px; }
-  .radius-input > span { position: absolute; right: 30px; top: 15px; font-size: 13px; color: var(--muted); pointer-events: none; }
+  .radius-input > span { position: absolute; right: 22px; top: 17px; font-size: 13px; color: var(--muted); pointer-events: none; }
   .radius-presets { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
-  .radius-presets button { min-height: 44px; padding: 9px 12px; border: 1px solid var(--line); background: transparent; color: var(--ink); font-size: 12px; font-weight: 600; }
-  .radius-presets button[aria-pressed=true] { border-color: var(--green); background: var(--soft-green); }
+  .radius-presets button { min-height: 44px; padding: 9px 13px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); color: var(--ink); font-size: 12px; font-weight: 600; }
+  .radius-presets button:hover { border-color: var(--muted); }
+  .radius-presets button[aria-pressed=true] { border-color: var(--ink); background: var(--surface-soft); }
   .field > small.radius-error { color: var(--error); }
   .start-settings, .scope-settings { border: 0; min-width: 0; margin: 27px 0 0; padding: 0; }
-  .start-settings legend, .scope-settings legend { padding: 0; font-size: 13px; font-weight: 700; }
-  .start-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
-  .start-option { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 12px; margin: 0; border: 1px solid var(--line); cursor: pointer; line-height: 1.5; }
-  .start-option.selected { border-color: var(--green); background: var(--soft-green); }
-  .start-option input { width: 22px; height: 22px; margin: 0; flex: 0 0 auto; accent-color: var(--green); }
-  .schedule-inputs { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+  .start-settings legend, .scope-settings legend { padding: 0; font-size: 14px; font-weight: 700; }
+  .start-options { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-top: 12px; }
+  .start-option { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 16px; margin: 0; border: 1px solid var(--line); border-radius: 14px; cursor: pointer; line-height: 1.5; transition: border-color 120ms, background 120ms; }
+  .start-option:hover { border-color: var(--muted); }
+  .start-option.selected { border-color: var(--ink); background: var(--surface-soft); }
+  .start-option input { width: 22px; height: 22px; margin: 0; flex: 0 0 auto; accent-color: var(--ink); }
+  .start-option strong { display: block; font-size: 13px; }
+  .start-option small { display: block; margin-top: 3px; font-size: 11px; font-weight: 400; color: var(--muted); }
+  .schedule-inputs { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22px; }
   .schedule-help { margin-top: 12px; color: var(--muted); font-size: 12px; line-height: 1.7; }
-  .schedule-error { margin-top: 15px; color: var(--error); font-size: 13px; line-height: 1.7; }
-  .large-zone-note { margin-top: 20px; font-size: 13px; color: var(--muted); padding: 14px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-  .zone-status { margin-top: 12px; color: var(--green); font-size: 12px; }
-  .nearby { border-left: 3px solid var(--green); background: var(--soft-green); padding: 18px; margin-top: 24px; }
-  .nearby h3 { margin: 0; font-size: 15px; }
+  .schedule-error { margin-top: 16px; padding: 14px; border-left: 3px solid var(--error); border-radius: 4px 12px 12px 4px; background: var(--notice); color: var(--error); font-size: 13px; line-height: 1.7; }
+  .large-zone-note { margin-top: 20px; font-size: 13px; color: var(--muted); padding: 16px; background: var(--notice); border-radius: 12px; }
+  .zone-status { margin-top: 12px; color: var(--ink); font-size: 13px; }
+  .zone-status:empty { display: none; }
+  .nearby { border: 1px solid var(--line); border-radius: 16px; background: var(--surface-soft); padding: 20px; margin-top: 26px; }
+  .nearby h3 { margin: 0; font-size: 16px; }
   .nearby > p { margin: 8px 0 12px; font-size: 12px; color: var(--muted); }
-  .nearby a { display: block; border-top: 1px solid var(--line); padding: 12px 0; text-decoration: none; font-size: 13px; }
+  .nearby a { display: block; border-top: 1px solid var(--line); padding: 13px 0; text-decoration: none; font-size: 13px; }
   .nearby a:hover strong { text-decoration: underline; }
   .nearby a > span { display: block; margin-top: 4px; font-size: 11px; color: var(--muted); }
   .review { margin: 20px 0 0; }
-  .review > div { display: grid; grid-template-columns: 150px 1fr; border-bottom: 1px solid var(--line); padding: 13px 0; gap: 12px; font-size: 14px; }
+  .review > div { display: grid; grid-template-columns: 150px minmax(0, 1fr); border-bottom: 1px solid var(--line); padding: 15px 0; gap: 12px; font-size: 14px; }
   dt { color: var(--muted); } dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
-  .confirmation { display: flex; align-items: flex-start; gap: 12px; line-height: 1.7; font-size: 13px; margin-top: 24px; }
-  .confirmation input { flex: 0 0 auto; height: 24px; width: 24px; accent-color: var(--green); }
-  .publication-note { margin-top: 10px; color: var(--muted); font-size: 12px; }
+  .confirmation { display: flex; align-items: flex-start; gap: 12px; line-height: 1.7; font-size: 14px; margin-top: 26px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-soft); }
+  .confirmation input { flex: 0 0 auto; height: 24px; width: 24px; margin: 1px 0 0; accent-color: var(--ink); }
+  .publication-note { margin-top: 12px; color: var(--muted); font-size: 12px; }
   .abandon-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-top: 12px; }
-  .submission-message { margin-top: 20px; font-size: 14px; color: var(--green); }
+  .submission-message { margin-top: 20px; padding: 16px; border-left: 3px solid var(--error); border-radius: 4px 12px 12px 4px; background: var(--notice); font-size: 14px; color: var(--error); }
+  .submission-success { border-color: var(--success); color: var(--success); background: var(--success-surface); }
   .submission-message:empty { display: none; }
-  .wizard-actions { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 26px; }
-  .primary-action { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-left: auto; min-height: 58px; background: var(--green); border: 1px solid var(--green); padding: 16px 21px; font-size: 14px; font-weight: 700; color: var(--button-ink); }
-  .primary-action:disabled { background: var(--soft-green); color: var(--muted); border-color: var(--line); }
-  .help-end { font-size: 11px; color: var(--muted); margin-top: 20px; }
+  .wizard-actions { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 28px; padding-top: 22px; border-top: 1px solid var(--line); }
+  .primary-action { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-left: auto; min-height: 58px; background: var(--accent); border: 1px solid var(--accent); border-radius: 14px; padding: 16px 21px; font-size: 14px; font-weight: 700; color: var(--button-ink); text-decoration: none; transition: transform 120ms; }
+  .primary-action:not(:disabled):hover { transform: translateY(-2px); }
+  .primary-action:not(:disabled):active { transform: translateY(1px); }
+  .primary-action:disabled { background: var(--surface-soft); color: var(--muted); border-color: var(--line); }
+  .help-end { font-size: 12px; color: var(--muted); margin-top: 20px; text-align: center; }
   @media(max-width: 700px) {
-    .creation-page { padding-bottom: 40px; }
-    h1 { letter-spacing: -1.8px; font-size: 39px; }
-    h2 { font-size: 23px; }
-    .creation-lead { font-size: 15px; }
-    .wizard { padding: 18px 14px; }
-    .steps { gap: 8px; }
-    .steps li { font-size: 11px; }
-    .steps span { margin-right: 4px; }
+    .creation-page { padding-bottom: 45px; }
+    h1 { letter-spacing: -1.8px; font-size: clamp(35px, 8.7vw, 52px); }
+    h2 { font-size: 25px; }
+    .creation-lead { font-size: 16px; margin-top: 20px; }
+    .wizard { padding: 22px 18px; border-radius: 22px; }
+    .steps { gap: 8px; margin-top: 25px; }
+    .steps li { gap: 6px; font-size: 11px; }
+    .steps span { width: 27px; height: 27px; font-size: 9px; }
     .search-row { flex-wrap: wrap; }
     .search-row input { flex-basis: 100%; }
     .search-row button { width: 100%; }
@@ -531,5 +546,6 @@
     .wizard-actions { flex-direction: column; align-items: stretch; gap: 10px; }
     .primary-action { width: 100%; margin-left: 0; }
     .review > div { grid-template-columns: 1fr; gap: 5px; }
+    .confirmation { padding: 14px; font-size: 13px; }
   }
 </style>

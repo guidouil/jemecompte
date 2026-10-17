@@ -81,7 +81,7 @@ test('home requires an explicit whole-city choice before generating an identity 
     return (await response.json()).events?.some((event: { id: string }) => event.id === cityId);
   }, { timeout: 12_000 }).toBe(true);
   await page.goto('/');
-  await expect(page.locator('.national-count[data-counting-scope="gathering"]')).toContainText('RASSEMBLEMENTS LOCALISÉS');
+  await expect(page.locator('.counter-column[data-counting-scope="gathering"]')).toContainText('RASSEMBLEMENTS LOCALISÉS');
   await expect(page.locator('.national-count[data-counting-scope="city"]')).toContainText('COMMUNES ENTIÈRES');
   await page.getByLabel('Nom ou ville', { exact: true }).fill(cityName);
   const result = page.locator('.discovery-result').filter({ hasText: cityName });

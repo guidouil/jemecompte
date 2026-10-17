@@ -13,7 +13,13 @@
   <h1>Vérifier ce qui est publié</h1>
   <p class="information-lead">Le code est public. Cette page indique la version annoncée par le serveur et explique comment contrôler les fichiers publiés depuis un outil indépendant.</p>
 
-  <section class="prose-section">
+  <nav class="article-navigation" aria-label="Sur cette page">
+    <a href="#version">La version publiée</a>
+    <a href="#verification">Vérifier les fichiers</a>
+    <a href="#portee">La portée de la preuve</a>
+  </nav>
+
+  <section class="prose-section" id="version">
     <h2>La version annoncée</h2>
     <dl>
       <dt>Commit GitHub</dt><dd>{#if data.provenance.build.commit}<a href={`${repository}/commit/${data.provenance.build.commit}`}><code>{data.provenance.build.commit}</code></a>{:else}Indisponible{/if}</dd>
@@ -27,14 +33,14 @@
     <p><a href="/api/version" data-sveltekit-reload>Télécharger les métadonnées publiques en JSON</a>. Cette page et cette réponse sont exclues du cache hors ligne. Une PWA déjà ouverte peut conserver un ancien client jusqu’à sa prochaine ouverture.</p>
   </section>
 
-  <section class="prose-section">
+  <section class="prose-section" id="verification">
     <h2>Une vérification indépendante</h2>
     <p>Le workflow de publication prépare une archive complète du serveur, du client et des dépendances nécessaires au démarrage. Son attestation GitHub relie son empreinte au dépôt, au commit et au workflow de fabrication. L’archive contient un manifeste SHA-256 pour contrôler chaque fichier.</p>
     <p>Depuis une copie du dépôt de confiance, vous pouvez vérifier cette attestation, contrôler l’archive puis comparer les ressources publiques du site. Le script utilise une connexion directe et contourne les caches du navigateur.</p>
     <p><a href={`${repository}/blob/main/docs/code-provenance.md`}>Lire la procédure et les commandes de vérification</a> · <a href={`${repository}/actions/workflows/release.yml`}>Voir les publications d’artefacts</a></p>
   </section>
 
-  <section class="prose-section">
+  <section class="prose-section" id="portee">
     <h2>Ce que cette preuve couvre</h2>
     <p>Une attestation vérifiée prouve l’origine d’une archive et de ses fichiers. La comparaison publique contrôle les fichiers reçus par la personne qui la réalise. Un identifiant affiché par le site reste une déclaration du serveur.</p>
     <p>Une simple page web ne permet pas d’inspecter le programme réellement exécuté chez l’hébergeur. Un opérateur disposant des accès à l’hébergement peut changer le serveur ou présenter des réponses différentes. Vérifier les fichiers installés et les journaux de déploiement nécessite un contrôle distinct chez l’hébergeur.</p>
@@ -44,9 +50,19 @@
 </article>
 
 <style>
-  dl { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(0, 2fr); gap: 0.8rem 1.5rem; }
-  dt { font-weight: 600; }
-  dd { margin: 0; overflow-wrap: anywhere; }
+  .article-navigation { display: flex; flex-wrap: wrap; gap: 10px; padding: 24px 0; margin-top: 10px; border-bottom: 1px solid var(--line); }
+  .article-navigation a { display: inline-flex; align-items: center; min-height: 44px; padding: 10px 16px; border: 1px solid var(--line); border-radius: 24px; background: var(--surface); font-size: 12px; font-weight: 600; text-decoration: none; }
+  .article-navigation a:hover { background: var(--surface-soft); border-color: var(--muted); }
+  section[id] { scroll-margin-top: 28px; }
+  dl { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(0, 2fr); gap: 16px 24px; margin: 24px 0; padding: 26px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); font-size: 13px; line-height: 1.7; }
+  dt { font-weight: 700; }
+  dd { margin: 0; overflow-wrap: anywhere; color: var(--muted); }
   code { font-size: 0.85em; }
-  @media (max-width: 600px) { dl { grid-template-columns: 1fr; gap: 0.35rem; } dd { margin-bottom: 0.9rem; } }
+  @media (max-width: 600px) {
+    .article-navigation { gap: 8px; }
+    .article-navigation a { font-size: 11px; padding: 10px 13px; }
+    dl { grid-template-columns: 1fr; gap: 5px; padding: 18px; }
+    dd { margin-bottom: 14px; }
+    dd:last-child { margin-bottom: 0; }
+  }
 </style>

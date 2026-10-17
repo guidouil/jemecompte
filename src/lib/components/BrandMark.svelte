@@ -1,0 +1,22 @@
+<script lang="ts">
+  let { size = 40, decorative = true, class: className = '' }: {
+    size?: number;
+    decorative?: boolean;
+    class?: string;
+  } = $props();
+</script>
+
+<svg class="brand-mark {className}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width={size} height={size} role={decorative ? undefined : 'img'} aria-hidden={decorative ? 'true' : undefined} aria-label={decorative ? undefined : 'Deux personnes réunies'}>
+  <rect class="mark-background" width="512" height="512" rx="55" />
+  <g class="mark-people">
+    <circle cx="176" cy="153" r="49" />
+    <circle cx="338" cy="153" r="49" />
+    <path d="M96 426 C77 426 69 417 69 398 L72 342 C75 274 112 212 176 212 C210 212 238 228 256 256 C275 228 304 212 338 212 C401 212 437 273 440 342 L443 398 C443 417 435 426 416 426 H383 C363 426 354 417 354 397 L352 368 C351 338 341 319 326 319 C307 319 297 337 297 365 V392 C297 413 291 422 271 422 H240 C219 422 212 413 212 392 V365 C212 337 202 319 185 319 C167 319 157 338 156 368 L155 397 C154 417 146 426 127 426 Z" />
+  </g>
+</svg>
+
+<style>
+  .brand-mark { display: block; flex: none; }
+  .mark-background { fill: var(--brand-mark-background, var(--accent)); }
+  .mark-people { fill: var(--brand-mark-foreground, var(--paper)); }
+</style>

@@ -153,21 +153,23 @@
 
 <style>
   .policy-date { margin-top: 18px; color: var(--muted); font-size: 12px; }
-  .privacy-summary { margin-top: 30px; padding: 23px 25px; border-left: 3px solid var(--green); background: var(--soft-green); }
+  .privacy-summary { margin-top: 30px; padding: 25px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface-soft); }
   .privacy-summary p { font-size: 14px; line-height: 1.8; }
   .privacy-summary p + p { margin-top: 10px; }
-  .privacy-navigation { display: flex; flex-wrap: wrap; gap: 6px 24px; padding: 20px 0; border-bottom: 1px solid var(--line); }
-  .privacy-navigation a { display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; }
+  .privacy-navigation { display: flex; flex-wrap: wrap; gap: 10px; padding: 24px 0; border-bottom: 1px solid var(--line); }
+  .privacy-navigation a { display: inline-flex; align-items: center; min-height: 44px; padding: 10px 16px; border: 1px solid var(--line); border-radius: 24px; background: var(--surface); font-size: 12px; font-weight: 600; text-decoration: none; }
+  .privacy-navigation a:hover { background: var(--surface-soft); border-color: var(--muted); }
   .data-list { margin: 24px 0 0; }
   .data-list > div { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 24px; border-top: 1px solid var(--line); padding: 21px 0; font-size: 14px; line-height: 1.8; }
   .data-list > div:last-child { border-bottom: 1px solid var(--line); }
   .data-list dt { font-weight: 700; }
   .data-list dd { margin: 0; color: var(--muted); }
-  .retention { display: block; margin-top: 8px; color: var(--ink); }
+  .retention { display: block; margin-top: 12px; padding-left: 14px; border-left: 2px solid var(--accent); color: var(--ink); }
   .prose-section { scroll-margin-top: 24px; }
   @media (max-width: 600px) {
     .privacy-summary { padding: 18px; }
     .data-list > div { grid-template-columns: 1fr; gap: 7px; }
-    .privacy-navigation { column-gap: 20px; }
+    .privacy-navigation { gap: 8px; }
+    .privacy-navigation a { font-size: 11px; padding: 10px 13px; }
   }
 </style>
