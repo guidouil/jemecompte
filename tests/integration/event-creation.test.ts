@@ -147,6 +147,16 @@ describe.skipIf(!testUrl)('PostgreSQL public event creation', () => {
 
   it('deduplicates concurrent request IDs and rejects changed public payloads without rewriting the event', async () => {
     const input = payload();
+    // Hold provider resolution until every request completed its empty preflight,
+    // so this covers simultaneous inserts rather than mostly committed replays.
+    let arrived = 0;
+    let release!: () => void;
+    const ready = new Promise<void>((resolve) => { release = resolve; });
+    boundaryMock.mockImplementation(async () => {
+      if (++arrived === 30) release();
+      await ready;
+      return officialBoundary;
+    });
     const results = await Promise.all(Array.from({ length: 30 }, () => createPublicEvent(input)));
     expect(results.filter((result) => result.status === 'created')).toHaveLength(1);
     expect(results.filter((result) => result.status === 'already_created')).toHaveLength(29);
@@ -154,6 +164,23 @@ describe.skipIf(!testUrl)('PostgreSQL public event creation', () => {
     expect(await createPublicEvent({ ...input, radiusMeters: 500 })).toEqual({ status: 'request_conflict' });
     expect(await createPublicEvent({ ...input, name: 'Un autre nom' })).toEqual({ status: 'request_conflict' });
     expect(await getEventById(input.requestId)).toEqual(original);
+  });
+
+  it('returns a conflict when a generated slug belongs to another UUID without changing that event', async () => {
+    const input = payload();
+    const existingId = randomUUID();
+    fixtureIds.push(existingId);
+    await getPool().query(`INSERT INTO events
+      (id,slug,name,city_code,city_name,geofence,starts_at,ends_at,status,is_test)
+      VALUES($1,$2,'Événement existant','75056','Paris',$3::jsonb,
+        clock_timestamp(),clock_timestamp()+interval '1 hour','published',true)`, [
+      existingId, `creation-communautaire-fictive-${input.requestId}`,
+      JSON.stringify({ type: 'Polygon', coordinates: officialBoundary.geofence.coordinates[0] })
+    ]);
+    const existing = await getEventById(existingId);
+    expect(await createPublicEvent(input)).toEqual({ status: 'request_conflict' });
+    expect(await getEventById(input.requestId)).toBeNull();
+    expect(await getEventById(existingId)).toEqual(existing);
   });
 
   it('stores a ten-kilometer geofence, includes nine kilometers, excludes eleven and keeps replays immutable', async () => {

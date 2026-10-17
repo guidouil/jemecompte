@@ -73,7 +73,7 @@ export async function createPublicEvent(input: unknown, admission?: VerifiedAdmi
         SELECT $1,$2,$3,$4,$5,$6,$7::jsonb,
           COALESCE($11::timestamptz,instant),COALESCE($11::timestamptz,instant)+($8::integer * interval '1 minute'),
           'published',$9,'community',$10${payload.countingScope === 'city' ? ',$12' : ''} FROM decision
-        ON CONFLICT (id) DO NOTHING RETURNING *,ends_at>clock_timestamp() AS schedule_valid`, [
+        ON CONFLICT DO NOTHING RETURNING *,ends_at>clock_timestamp() AS schedule_valid`, [
         payload.requestId, slug, payload.name,
         payload.cityCode, cityName,
         payload.countingScope === 'city'
@@ -88,7 +88,8 @@ export async function createPublicEvent(input: unknown, admission?: VerifiedAdmi
         if (!rows[0].schedule_valid) throw new InvalidScheduleError();
         return { status: 'created', event: publicEvent(rows[0]) };
       }
-      // A fresh statement sees the concurrent INSERT that ON CONFLICT may have waited for.
+      // Arbitrate both UUID and slug uniqueness: concurrent identical requests can
+      // reach either index first. Then a fresh statement sees the committed winner.
       const existing = await client.query<EventRow>('SELECT * FROM events WHERE id=$1 FOR SHARE', [payload.requestId]);
       const row = existing.rows[0];
       if (!row || row.creation_source !== 'community' || !row.creation_request_hash?.equals(digest)) {
