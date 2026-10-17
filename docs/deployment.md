@@ -24,12 +24,14 @@ Les valeurs d'instance, identifiants de ressources, tickets support et rapports 
 
 Exécuter `npm run db:migrate` avec l'environnement de la base cible, depuis le répertoire applicatif. Le runner sérialise les migrations et vérifie les fichiers déjà appliqués. Ne pas lancer de seed de démonstration automatiquement en production.
 
-Planifier `npm run db:purge -- --expired` toutes les 15 minutes et suivre son résultat. Le dépôt fournit `clevercloud/cron.json` et son wrapper pour Clever Cloud : environnement de production, instance numéro zéro, répertoire `APP_HOME`. Vérifier leur installation et leur exécution sur l'hébergement choisi. Les admissions expirées sont purgées après `endsAt + 48 h` ; les sauvegardes ont leur propre rétention à configurer.
+Appliquer la migration des soutiens avant le nouveau code. Avec un rôle applicatif restreint, ajouter `SELECT, INSERT, DELETE` sur `supports`, `SELECT, INSERT, UPDATE` sur `support_counters` et `SELECT, INSERT, DELETE` sur `daily_support_claims`. Le droit de suppression sur `supports` permet la conversion d’un soutien en présence ; celui sur `daily_support_claims` permet le nettoyage des jours expirés. Conserver les restrictions existantes sur `presences`, notamment l’absence de droit de suppression pour le rôle public. Les migrations et la purge utilisent leurs droits de maintenance habituels.
+
+Planifier `npm run db:purge -- --expired` toutes les 15 minutes et suivre son résultat. Le dépôt fournit `clevercloud/cron.json` et son wrapper pour Clever Cloud : environnement de production, instance numéro zéro, répertoire `APP_HOME`. Vérifier leur installation et leur exécution sur l'hébergement choisi. Les détails individuels de présence et de soutien sont purgés après `endsAt + 48 h`. Les marqueurs de soutien des jours de Paris passés sont également supprimés par cette tâche et lors des demandes de soutien ; ils ne contiennent aucune référence d’événement. Les agrégats restent conservés ; les sauvegardes ont leur propre rétention à configurer.
 
 Configurer les sauvegardes, leur rétention et une restauration de contrôle auprès de l'hébergeur. Garder les procédures propres à l'instance hors du dépôt public. Les principes de cohérence, de purge et de reprise sont décrits dans l'[ADR PostgreSQL](adr/002-database.md).
 
 ## Vérifications
 
-Avant l'ouverture, vérifier HTTPS, le catalogue, la création d'un événement de recette, la participation idempotente, SSE et son repli, puis supprimer uniquement les données de cette recette. Contrôler aussi la consommation mémoire, les limites de connexion, la purge et les journaux de chaque couche, sans enregistrer les corps de participation ni les paramètres SQL.
+Avant l'ouverture, vérifier HTTPS, le catalogue, la création d'un événement de recette, la participation idempotente, le soutien sans demande de GPS, le refus d’un deuxième événement soutenu le même jour et la conversion d’un soutien en présence, SSE et son repli, puis supprimer uniquement les données de cette recette. Contrôler aussi la consommation mémoire, les limites de connexion, la purge et les journaux de chaque couche, sans enregistrer les corps de participation ni les paramètres SQL.
 
 `REAL_EVENTS_APPROVED` conserve sa valeur désactivée tant que les décisions du [pilote](pilot-checklist.md) ne sont pas résolues. Ce paramètre n'établit aucune conformité juridique.

@@ -7,5 +7,5 @@
 <svelte:head><title>{data.selectedEvent?.name ?? 'Rassemblement'} — JeMeCompte</title></svelte:head>
 
 {#key data.selectedEvent?.id}
-  <CountExperience events={data.events} selectedEvent={data.selectedEvent} snapshot={data.snapshot} nationalTotal={data.nationalTotal} serviceAvailable={data.serviceAvailable} />
+  <CountExperience events={data.events} selectedEvent={data.selectedEvent} snapshot={data.snapshot} nationalTotal={data.nationalTotal} nationalSupportTotal={data.nationalSupportTotal} serviceAvailable={data.serviceAvailable} />
 {/key}

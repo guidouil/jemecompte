@@ -1,11 +1,11 @@
 import type { CountingScope, CounterSnapshot, PublicEvent } from '../shared/types';
-import { getCounterSnapshot, getNationalTotal } from './counters';
+import { getCounterSnapshot, getNationalTotals, type NationalTotals } from './counters';
 import { listPublicEvents } from './events';
 import { realEventsApproved } from './db';
 
 interface Entry<T> { value?: T; expiresAt: number; pending?: Promise<T>; generation?: number }
 const catalogues = new Map<boolean, Entry<PublicEvent[]>>();
-const nationals = new Map<string, Entry<string>>();
+const nationals = new Map<string, Entry<NationalTotals>>();
 const snapshots = new Map<string, Entry<CounterSnapshot | null>>();
 
 function modeEntry<K, T>(entries: Map<K, Entry<T>>, key: K): Entry<T> {
@@ -58,8 +58,15 @@ export function publicCatalogue(): Promise<PublicEvent[]> {
   return cached(modeEntry(catalogues, isTest), 5_000, () => listPublicEvents(isTest));
 }
 export function publicNationalTotal(countingScope: CountingScope = 'gathering'): Promise<string> {
+  return publicNationalTotals(countingScope).then((totals) => totals.total);
+}
+export function publicNationalSupportTotal(countingScope: CountingScope = 'gathering'): Promise<string> {
+  return publicNationalTotals(countingScope).then((totals) => totals.supportTotal);
+}
+export function publicNationalTotals(countingScope: CountingScope = 'gathering'): Promise<NationalTotals> {
   const isTest = !realEventsApproved();
-  return cached(modeEntry(nationals, `${isTest}:${countingScope}`), 3_000, () => getNationalTotal(isTest, countingScope));
+  return cached(modeEntry(nationals, `${isTest}:${countingScope}`), 3_000,
+    () => getNationalTotals(isTest, countingScope));
 }
 export function publicCounterSnapshot(eventId: string): Promise<CounterSnapshot | null> {
   const isTest = !realEventsApproved();

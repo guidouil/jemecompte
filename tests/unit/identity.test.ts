@@ -1,7 +1,7 @@
 import { webcrypto, createHmac } from 'node:crypto';
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { eraseLocalIdentity, getEventIdentity } from '../../src/lib/client/identity';
+import { eraseLocalIdentity, getDailySupportIdentity, getEventIdentity } from '../../src/lib/client/identity';
 
 const eventA = 'ea935eb8-2a5f-4802-b7be-5c2ec116c71a';
 const eventB = '3e3f5fe8-fb22-4e7b-8c24-ef448fb57ee8';
@@ -64,6 +64,36 @@ describe('local event identity', () => {
     await eraseLocalIdentity();
     expect(await getEventIdentity(eventA)).not.toBe(first);
     vi.restoreAllMocks();
+  });
+
+  it('scopes support deduplication to one day without reusing event identifiers', async () => {
+    const day = '2026-10-17';
+    const tokens = await Promise.all(Array.from({ length: 10 }, () => getDailySupportIdentity(day)));
+    expect(new Set(tokens).size).toBe(1);
+    expect(tokens[0]).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(await getDailySupportIdentity('2026-10-18')).not.toBe(tokens[0]);
+    expect(await getEventIdentity(eventA)).not.toBe(tokens[0]);
+    expect(await getEventIdentity(eventB)).not.toBe(tokens[0]);
+    await eraseLocalIdentity();
+    expect(await getDailySupportIdentity(day)).not.toBe(tokens[0]);
+  });
+
+  it('uses a separate support-day HMAC domain and rejects invalid days', async () => {
+    const secret = new Uint8Array(32).fill(0x0b);
+    const key = await crypto.subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const database = await openIdentityDatabase();
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction('identity', 'readwrite');
+      transaction.objectStore('identity').put({ key, createdAt: Date.now() }, 'master-v1');
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+    database.close();
+    expect(await getDailySupportIdentity('2026-10-17')).toBe(createHmac('sha256', secret)
+      .update('jemecompte.fr\0support-day:v1\0' + '2026-10-17').digest('base64url'));
+    for (const day of ['2026-02-30', '2026-10-17T00:00:00Z', '2026-13-01', '2026-1-1']) {
+      await expect(getDailySupportIdentity(day)).rejects.toMatchObject({ code: 'invalid_day' });
+    }
   });
 
   it('rejects unavailable storage and non-canonical event IDs without volatile fallback', async () => {

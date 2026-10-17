@@ -64,6 +64,33 @@ export const eventCounters = pgTable('event_counters', {
   check('event_counters_nonnegative', sql`${table.count} >= 0 AND ${table.revision} >= 0`)
 ]);
 
+export const supports = pgTable('supports', {
+  eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'restrict' }),
+  anonymousEventId: bytea('anonymous_event_id').notNull(),
+  countingDay: date('counting_day', { mode: 'string' }).notNull()
+}, (table) => [
+  primaryKey({ columns: [table.eventId, table.anonymousEventId] }),
+  check('supports_identifier_length', sql`octet_length(${table.anonymousEventId}) = 32`)
+]);
+
+export const supportCounters = pgTable('support_counters', {
+  eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'restrict' }),
+  countingDay: date('counting_day', { mode: 'string' }).notNull(),
+  count: bigint('count', { mode: 'bigint' }).notNull().default(0n),
+  revision: bigint('revision', { mode: 'bigint' }).notNull().default(0n)
+}, (table) => [
+  primaryKey({ columns: [table.eventId, table.countingDay] }),
+  check('support_counters_nonnegative', sql`${table.count} >= 0 AND ${table.revision} >= 0`)
+]);
+
+export const dailySupportClaims = pgTable('daily_support_claims', {
+  countingDay: date('counting_day', { mode: 'string' }).notNull(),
+  anonymousDayId: bytea('anonymous_day_id').notNull()
+}, (table) => [
+  primaryKey({ columns: [table.countingDay, table.anonymousDayId] }),
+  check('daily_support_claims_identifier_length', sql`octet_length(${table.anonymousDayId}) = 32`)
+]);
+
 export const adminAudit = pgTable('admin_audit', {
   id: bigserial('id', { mode: 'bigint' }).primaryKey(),
   eventId: uuid('event_id').references(() => events.id, { onDelete: 'restrict' }),

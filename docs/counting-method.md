@@ -1,6 +1,6 @@
 # Ce que compte JeMeCompte
 
-Le chiffre décrit des **participations déclarées acceptées par le service**, dans les limites ci-dessous. Deux portées sont distinguées : un rassemblement localisé dans son périmètre public, ou une commune entière. Aucune de ces portées ne constitue une estimation exhaustive de la foule, un décompte d'humains uniques ni une mesure des personnes encore présentes.
+Le compteur principal additionne les **participations déclarées acceptées par le service** et les **soutiens à distance**, avec le détail des deux catégories sous le total. Leurs agrégats restent distincts, dans les limites ci-dessous. Ce total ne mesure ni une présence physique ni des humains uniques. Un soutien exprime un choix sans vérifier une position ; il n’affirme aucune présence dans le périmètre. Deux portées sont distinguées : un rassemblement localisé dans son périmètre public, ou une commune entière. Aucune de ces portées ne constitue une estimation exhaustive de la foule, un décompte d'humains uniques ni une mesure des personnes encore présentes.
 
 ## Comptages de commune entière
 
@@ -40,9 +40,23 @@ Après un clic volontaire, le navigateur demande ou utilise sa permission de gé
 
 Une clé aléatoire locale produit un identifiant propre à l'événement. Le serveur refuse une seconde insertion du même couple événement/identifiant. L'insertion et l'incrément SQL sont atomiques ; un nouvel affichage « compté » exige un commit serveur. Le jour d'acceptation provient de l'heure PostgreSQL dans le fuseau `Europe/Paris`.
 
-Le compteur d'événement est cumulatif sur toute sa durée, même s'il traverse minuit. Le changement de jour ne réinitialise ni ce compteur ni l'unicité du couple événement/identifiant. Le national du jour et celui d'une ville additionnent les participations nouvellement acceptées ce jour français, **uniquement dans la même famille de portée**. Une même personne participant à deux événements peut être comptée deux fois dans le total de sa famille. Il n'existe aucune identité globale permettant de la reconnaître entre comptages.
+Le compteur d'événement est cumulatif sur toute sa durée, même s'il traverse minuit. Le changement de jour ne réinitialise ni ce compteur ni l'unicité du couple événement/identifiant. Le détail des participations du jour, au niveau national ou d'une ville, additionne les participations nouvellement acceptées ce jour français, **uniquement dans la même famille de portée**. Le compteur principal y ajoute les soutiens du jour, dont l'agrégat reste séparé. Une même personne participant à deux événements peut être comptée deux fois dans le total de sa famille. Les identifiants de présence ne permettent pas de la reconnaître entre événements ; le marqueur quotidien des soutiens décrit ci-dessous a une portée distincte.
 
 Les événements fictifs conservent un classement technique séparé. Leurs agrégats nationaux et par ville sont séparés de ceux des événements réels. Le seed de démonstration ne crée aucune présence.
+
+## Un soutien à distance
+
+Le soutien est possible pendant la fenêtre d’ouverture du comptage, sans compte, nom, e-mail ni géolocalisation. Il concerne aussi bien un rassemblement localisé qu’une commune entière, sans affirmer que la personne se trouve dans cette zone.
+
+Une identité locale peut soutenir **un seul événement par journée de Paris**, toutes portées confondues, et **une seule fois un même événement sur toute sa durée**. Le serveur décide du jour selon son horloge dans le fuseau `Europe/Paris`. Un événement qui traverse minuit ne peut donc pas recevoir un second soutien de cette identité le lendemain. Un autre événement peut être soutenu le jour suivant. Le choix du jour ne se transfère pas vers un autre événement.
+
+Une identité déjà comptée présente dans un événement ne peut pas le soutenir en plus. Si elle a d’abord soutenu cet événement, une présence acceptée selon le parcours habituel remplace atomiquement son soutien : le compteur de soutien diminue et celui de présence augmente. Un refus ou un échec du contrôle de présence laisse le soutien inchangé. Le choix de soutien déjà consommé reste bloqué pour la journée concernée après conversion. Une présence à un autre événement et un soutien le même jour restent autorisés.
+
+Le secret local existant produit le même identifiant événementiel pour la présence et le soutien. Il produit aussi un marqueur de soutien propre à la journée de Paris, commun aux événements de cette journée. Le serveur ne reçoit jamais le secret. Le marqueur journalier est conservé dans une table distincte qui contient seulement le jour et le marqueur, sans événement ni heure précise. Il sert à refuser un deuxième choix du jour, sans identifiant global commun aux événements et durable entre journées. Cela ne prouve pas une identité humaine : plusieurs appareils, un autre navigateur, l’effacement du stockage ou un client modifié peuvent contourner ces limites.
+
+Le compteur principal additionne participations et soutiens, avec le détail de chaque catégorie dessous. Les agrégats de soutien restent séparés des participations, des autres portées et du mode test/réel. Le total ne doit être présenté ni comme une mesure de présence physique ni comme un décompte d’humains uniques. Les soutiens n’ont aucune signification géographique, même lorsqu’ils sont affichés sur la fiche d’une commune.
+
+Les lignes individuelles de soutien contiennent l’événement, son identifiant pseudonyme et le jour de réception. Elles suivent la même échéance de purge que les présences : fin d’événement + 48 h. Les agrégats sont conservés séparément. Les marqueurs journaliers des jours de Paris passés sont supprimés par les demandes de soutien et par la tâche de purge habituelle ; cette suppression n’est pas garantie à la seconde du passage à minuit. Les sauvegardes ont une rétention distincte. Le serveur peut observer les requêtes : conserver les marqueurs séparément ne garantit pas l’impossibilité de corrélations, notamment par le réseau. Voir [ADR 005](adr/005-remote-supports.md).
 
 ## Limites à conserver dans toute communication
 
@@ -53,6 +67,6 @@ Les événements fictifs conservent un classement technique séparé. Leurs agr�
 - Les snapshots publics ont quelques secondes de retard ; en réseau dégradé, l'affichage peut être plus ancien. Une nouvelle participation hors ligne ne reçoit aucun crédit local et n'est pas admise rétroactivement après clôture.
 - Une panne catastrophique peut faire perdre des participations pourtant confirmées selon le point de restauration disponible. Toute correction ou perte connue doit être expliquée publiquement.
 
-Le détail de dédoublonnage est purgé à l'échéance proposée `endsAt + 48 h`, avec un passage prévu toutes les 15 minutes. Les agrégats finalisés restent conservés ; après purge, le service ne peut plus répondre si un ancien identifiant individuel avait participé. Les sauvegardes ont une rétention distincte à configurer.
+Le détail événementiel de dédoublonnage des présences et soutiens est purgé à l'échéance proposée `endsAt + 48 h`, avec un passage prévu toutes les 15 minutes. Les agrégats finalisés restent conservés ; après purge, le service ne peut plus répondre si un ancien identifiant individuel avait participé. Les sauvegardes ont une rétention distincte à configurer.
 
 Le code est ouvert sous licence MIT. La transparence inclut protocole, définition des chiffres, périmètres, incidents et rétentions ; elle n'autorise jamais la publication des lignes individuelles de présences. Les décisions de confidentialité et de droits encore ouvertes figurent dans [ADR 001](adr/001-product-and-privacy.md).

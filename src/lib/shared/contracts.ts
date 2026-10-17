@@ -14,6 +14,14 @@ export const presenceStatusPayloadSchema = z.object({
   anonymousEventId: anonymousEventIdSchema
 }).strict();
 
+export const supportPayloadSchema = z.object({
+  anonymousEventId: anonymousEventIdSchema,
+  anonymousDayId: anonymousEventIdSchema,
+  day: z.iso.date(),
+  protocolVersion: z.literal(1),
+  countingScope: z.enum(['gathering', 'city']).optional()
+}).strict();
+
 const decimal = z.string().regex(/^(0|[1-9]\d{0,30})$/);
 export const counterSnapshotSchema = z.object({
   eventId: eventIdSchema,
@@ -25,6 +33,12 @@ export const counterSnapshotSchema = z.object({
   nationalRevision: decimal,
   cityTotal: decimal,
   cityRevision: decimal,
+  supportTotal: decimal.optional(),
+  supportRevision: decimal.optional(),
+  nationalSupportTotal: decimal.optional(),
+  nationalSupportRevision: decimal.optional(),
+  citySupportTotal: decimal.optional(),
+  citySupportRevision: decimal.optional(),
   epoch: z.string().regex(/^[1-9]\d{0,30}$/),
   serverTime: z.iso.datetime({ offset: true }),
   eventStatus: z.enum(['draft', 'published', 'paused', 'closed', 'cancelled']),

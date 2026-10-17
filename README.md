@@ -1,6 +1,6 @@
 # JeMeCompte.fr
 
-Prototype de comptage volontaire, sans compte participant : **« X personnes se sont comptées sur place »**. Ce chiffre additionne des participations déclarées ; il ne mesure ni toute la foule ni des humains uniques. Un client modifié peut mentir sur sa présence.
+Prototype de comptage volontaire, sans compte participant : un total de **participations déclarées et de soutiens à distance**, avec le détail des deux catégories sous le compteur principal. Un soutien ne demande pas de géolocalisation et n'affirme aucune présence dans le périmètre. Ces chiffres ne mesurent ni toute la foule ni des humains uniques. Un client modifié peut mentir sur sa présence.
 
 **La collecte réelle est désactivée par défaut dans la configuration technique.** Les mentions de version de test et de démonstration ont été retirées de l'interface ; ce changement de présentation n'active pas la collecte réelle. Les décisions E0 concernant information, bases légales, droits et retrait restent bloquantes avant un pilote réel. Voir [ADR 001](docs/adr/001-product-and-privacy.md), [PLAN.md](PLAN.md) et [méthode de comptage](docs/counting-method.md).
 
@@ -21,7 +21,7 @@ Ouvrir [http://127.0.0.1:5173](http://127.0.0.1:5173). Le seed crée un événem
 
 Aucune géolocalisation n'est demandée avant le clic. Hors du périmètre parisien, le refus « hors zone » est attendu. Les tests simulent une position uniquement sur des événements fictifs. Pour un téléphone réel, la géolocalisation nécessite HTTPS ; l'exception locale `localhost`/loopback ne rend pas une simple adresse HTTP du réseau local équivalente.
 
-La clé locale reste dans IndexedDB ; l'identifiant envoyé diffère selon l'événement. La position GPS utilisée pour chercher autour de soi ou participer reste dans le navigateur. Lors d'une création, le lieu public choisi explicitement sur la carte est, lui, envoyé et publié. Aucun fingerprint, tracker tiers, compte participant ou crédit hors ligne. Le fournisseur de localisation du navigateur et le transport réseau ont leurs propres limites de confidentialité.
+La clé locale non exportable reste dans IndexedDB ; l'identifiant envoyé diffère selon l'événement et sert à la fois aux présences et aux soutiens de cet événement. Un marqueur de soutien distinct, commun aux événements d'une même journée de Paris, empêche ce navigateur de soutenir plusieurs événements ce jour-là. Il change chaque jour et le serveur le conserve séparément, sans référence d'événement ; il n'est pas un identifiant durable entre journées. La position GPS utilisée pour chercher autour de soi ou participer reste dans le navigateur. Soutenir à distance ne demande aucune position. Lors d'une création, le lieu public choisi explicitement sur la carte est, lui, envoyé et publié. Aucun fingerprint, tracker tiers, compte participant ou crédit hors ligne. Le fournisseur de localisation du navigateur et le transport réseau ont leurs propres limites de confidentialité.
 
 ## Trouver et créer un rassemblement
 
@@ -41,7 +41,11 @@ Sur la page d'un rassemblement, **« Voir le périmètre »** ouvre une carte du
 
 **« Afficher le QR code »** génère ce même lien sur l'appareil, avec un encodeur chargé à la demande, sans service tiers. **« Imprimer l'affiche »** prépare une feuille locale pour le dialogue d'impression du navigateur. **« Signaler une erreur »** ouvre un courriel à compléter avec le lien public et le nom du rassemblement ; aucun message n'est envoyé automatiquement.
 
-Le compteur d'un rassemblement indique la date du dernier chiffre reçu et avertit après une minute sans chiffre frais. **« Vérifier ma participation »** retrouve une confirmation déjà reçue, y compris pendant un événement ouvert après rechargement, sans demander le GPS ni ajouter de participation. Sur l'accueil, le grand compteur affiche les participations du jour en France pour les rassemblements localisés ; le total des communes entières reste séparé. Le total national indique son heure de chargement et demande une actualisation de page pour être mis à jour.
+Sur la page d'un comptage, le soutien à distance est possible pendant sa fenêtre d'ouverture, sans compte ni GPS. Une même identité locale peut soutenir un seul événement par jour, selon l'heure serveur `Europe/Paris`, et une seule fois un même événement sur toute sa durée. Le choix ne se transfère pas vers un autre événement ce jour-là. Une présence acceptée dans le même événement remplace atomiquement le soutien : le soutien est retiré de son compteur et la présence ajoutée au sien. La conversion ne libère pas le choix de soutien pour la journée où il a été utilisé. Une présence à un autre événement le même jour reste possible. Ces protections portent sur une identité de navigateur : effacer le stockage ou changer de navigateur ou d'appareil permet de les contourner.
+
+Le compteur principal additionne les présences et les soutiens, avec le détail des deux catégories dessous. Les agrégats restent distincts, avec séparation des portées rassemblement/commune et des modes test/réel. Ce total ne représente ni une présence physique ni des humains uniques. Les marqueurs journaliers de soutien ne contiennent que le jour et le marqueur : la tâche de purge et les demandes de soutien suppriment ceux des jours de Paris passés. Les détails individuels de présence et de soutien sont purgés après la fin de l'événement + 48 h ; les agrégats restent conservés. Le serveur peut observer les requêtes et l'infrastructure reçoit l'IP : la pseudonymisation ne garantit pas un anonymat absolu. Voir [ADR 005](docs/adr/005-remote-supports.md).
+
+Le compteur d'un rassemblement indique la date du dernier chiffre reçu et avertit après une minute sans chiffre frais. **« Vérifier ma participation »** retrouve une confirmation déjà reçue, y compris pendant un événement ouvert après rechargement, sans demander le GPS ni ajouter de participation. Sur l'accueil, le grand compteur additionne les participations et les soutiens du jour en France pour les rassemblements localisés, avec leur détail ; le total des communes entières reste séparé. Le total national indique son heure de chargement et demande une actualisation de page pour être mis à jour.
 
 Après confirmation du formulaire de création, la demande publique et son UUID sont conservés dans `sessionStorage` pour cet onglet. Un rechargement propose de reprendre explicitement la même demande, sans nouvel envoi automatique et sans nouvel UUID. Aucun GPS ni secret participant n'y est conservé. La reprise est retirée après succès, rejet de validation ou abandon confirmé ; une demande de plus de 24 h est retirée à sa prochaine lecture. Si le stockage est bloqué, la reprise reste en mémoire et un message demande de garder la page ouverte.
 
@@ -91,7 +95,7 @@ Le parcours public sélectionne les événements de test lorsque le drapeau est 
 
 ## Architecture et exploitation
 
-SvelteKit 3, Svelte 5, TypeScript strict, CSS natif, PostgreSQL et schéma Drizzle ; API dans le même processus Node. L'unicité SQL et l'incrément sont transactionnels. SSE diffuse des snapshots regroupés, avec polling de secours. La PWA cache des ressources publiques ; aucune file de participations différées n'est créditée après clôture.
+SvelteKit 3, Svelte 5, TypeScript strict, CSS natif, PostgreSQL et schéma Drizzle ; API dans le même processus Node. L'unicité SQL, les changements de compteurs et la conversion d'un soutien en présence sont transactionnels. SSE diffuse des snapshots regroupés, avec polling de secours. La PWA cache des ressources publiques ; aucune file de participations ou de soutiens différés n'est créditée après clôture.
 
 - [Base, migrations et CLI](docs/adr/002-database.md)
 - [Déploiement](docs/deployment.md)

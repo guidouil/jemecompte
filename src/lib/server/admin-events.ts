@@ -78,11 +78,18 @@ export async function deleteAdminEvent(eventId: string, confirmationSlug: string
     const event = rows[0];
     if (!event) return { status: 'not_found' };
     if (confirmationSlug !== event.slug) return { status: 'confirmation_mismatch' };
-    const total = await client.query<{ total: string }>(
-      'SELECT COALESCE(sum(count),0)::text AS total FROM event_counters WHERE event_id=$1', [event.id]);
-    const presences = await client.query<{ total: string }>(`
-      WITH removed AS (DELETE FROM presences WHERE event_id=$1 RETURNING 1)
-      SELECT count(*)::text AS total FROM removed`, [event.id]);
+    const total = await client.query<{ total: string; support_total: string }>(`
+      SELECT COALESCE(sum(count),0)::text AS total,
+        (SELECT COALESCE(sum(count),0)::text FROM support_counters WHERE event_id=$1) AS support_total
+      FROM event_counters WHERE event_id=$1`, [event.id]);
+    const presences = await client.query<{ total: string; deleted_supports: string; deleted_support_counter_rows: number }>(`
+      WITH removed AS (DELETE FROM presences WHERE event_id=$1 RETURNING 1),
+        removed_supports AS (DELETE FROM supports WHERE event_id=$1 RETURNING 1),
+        removed_support_counters AS (DELETE FROM support_counters WHERE event_id=$1 RETURNING 1)
+      SELECT count(*)::text AS total,
+        (SELECT count(*)::text FROM removed_supports) AS deleted_supports,
+        (SELECT count(*)::integer FROM removed_support_counters) AS deleted_support_counter_rows
+      FROM removed`, [event.id]);
     const counters = await client.query('DELETE FROM event_counters WHERE event_id=$1', [event.id]);
     // Keep the existing administrative history without its restrictive event FK.
     const detached = await client.query('UPDATE admin_audit SET event_id=NULL WHERE event_id=$1', [event.id]);
@@ -96,7 +103,12 @@ export async function deleteAdminEvent(eventId: string, confirmationSlug: string
     await client.query(`INSERT INTO admin_audit(event_id,operator,action,reason,configuration)
       VALUES(NULL,$1,'delete_event',$2,$3::jsonb)`, [actor.operator, actor.reason, JSON.stringify({
       deletedEventId: deleted.eventId, slug: deleted.slug, removedCount: deleted.removedCount,
-      deletedPresences: deleted.deletedPresences, deletedCounterRows: deleted.deletedCounterRows
+      deletedPresences: deleted.deletedPresences, deletedCounterRows: deleted.deletedCounterRows,
+      ...((total.rows[0]?.support_total ?? '0') !== '0' || (presences.rows[0]?.deleted_supports ?? '0') !== '0' || (presences.rows[0]?.deleted_support_counter_rows ?? 0) > 0 ? {
+        removedSupportCount: total.rows[0]!.support_total,
+        deletedSupports: presences.rows[0]!.deleted_supports,
+        deletedSupportCounterRows: presences.rows[0]!.deleted_support_counter_rows
+      } : {})
     })]);
     return deleted;
   });

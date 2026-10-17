@@ -11,7 +11,8 @@ export const load: PageServerLoad = async ({ params }) => withReadBudget(async (
     const [events, snapshot] = await Promise.all([publicCatalogue(), publicCounterSnapshot(selectedEvent.id)]);
     return {
       events: [selectedEvent, ...events.filter((event) => event.id !== selectedEvent.id)],
-      selectedEvent, snapshot, nationalTotal: snapshot?.nationalTotal ?? '0', serviceAvailable: true
+      selectedEvent, snapshot, nationalTotal: snapshot?.nationalTotal ?? '0',
+      nationalSupportTotal: snapshot?.nationalSupportTotal, serviceAvailable: true
     };
   } catch (failure) {
     if (failure && typeof failure === 'object' && 'status' in failure && failure.status === 404) throw failure;

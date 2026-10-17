@@ -43,6 +43,33 @@ afterEach(() => {
 });
 
 describe('counter snapshots', () => {
+  const supports = { supportTotal: '7', supportRevision: '7', nationalSupportTotal: '9',
+    nationalSupportRevision: '9', citySupportTotal: '7', citySupportRevision: '7' };
+
+  it('merges support revisions independently, including a conversion into presence', () => {
+    const before = snapshot({ ...supports });
+    const converted = snapshot({ ...supports, total: '6', revision: '6', supportTotal: '6', supportRevision: '8',
+      nationalSupportTotal: '8', nationalSupportRevision: '10', citySupportTotal: '6', citySupportRevision: '8',
+      serverTime: '2026-10-16T13:00:03.000Z' });
+    const after = mergeCounterSnapshots(before, converted);
+    expect(after.total).toBe('6');
+    expect(after.supportTotal).toBe('6');
+    expect(after.nationalSupportTotal).toBe('8');
+    expect(mergeCounterSnapshots(after, before)).toEqual(after);
+    const nextDay = mergeCounterSnapshots(after, snapshot({ ...supports, day: '2026-10-17',
+      nationalSupportTotal: '0', nationalSupportRevision: '0', citySupportTotal: '0', citySupportRevision: '0' }));
+    expect(nextDay.nationalSupportTotal).toBe('0');
+    expect(nextDay.supportTotal).toBe('6');
+  });
+
+  it('validates support amounts and accepts snapshots from before supports existed', () => {
+    expect(parseCounterSnapshot(snapshot())).toBeDefined();
+    expect(parseCounterSnapshot(snapshot(supports))).toBeDefined();
+    expect(parseCounterSnapshot(snapshot({ supportTotal: '3' }))).toBeUndefined();
+    expect(parseCounterSnapshot(snapshot({ ...supports, supportTotal: '-1' }))).toBeUndefined();
+    expect(parseCounterSnapshot(snapshot({ ...supports, supportRevision: 'invalid' }))).toBeUndefined();
+  });
+
   it('accepts aggregate decreases after deleting an event without replaying an older larger total', () => {
     const before = snapshot({ nationalTotal: '20', nationalRevision: '20', cityTotal: '15', cityRevision: '15' });
     const after = mergeCounterSnapshots(before, snapshot({ serverTime: '2026-10-16T13:00:03.000Z', nationalTotal: '5', nationalRevision: '5', cityTotal: '5', cityRevision: '5' }));

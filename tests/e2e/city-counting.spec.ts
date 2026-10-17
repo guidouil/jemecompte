@@ -99,8 +99,8 @@ test('home requires an explicit whole-city choice before generating an identity 
   expect(submissions).toHaveLength(1);
   expect(Object.keys(submissions[0]!).sort()).toEqual(['anonymousEventId', 'countingScope', 'geofenceVersion', 'insideZone', 'protocolVersion']);
   expect(submissions[0]!.countingScope).toBe('city');
-  await expect(page.locator('.counter-caption')).toContainText('participations déclarées');
-  await expect(page.locator('.counter-caption')).toContainText('dans cette commune');
+  await expect(page.locator('.counter-caption')).toContainText('participations et soutiens');
+  await expect(page.locator('.counter-caption')).toContainText('pour ce comptage de commune');
   await expect(page.locator('.counter-caption')).not.toContainText('personnes');
   await expect(page.locator('.national-count')).toHaveCount(1);
   await expect(page.locator('.national-count')).toHaveAttribute('data-counting-scope', 'city');

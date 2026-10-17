@@ -5,7 +5,7 @@ const EVENT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 export class IdentityError extends Error {
   constructor(
-    public readonly code: 'storage_unavailable' | 'crypto_unavailable' | 'invalid_event',
+    public readonly code: 'storage_unavailable' | 'crypto_unavailable' | 'invalid_event' | 'invalid_day',
     message: string
   ) {
     super(message);
@@ -123,8 +123,22 @@ export async function getEventIdentity(eventId: string): Promise<string> {
   if (!EVENT_UUID.test(eventId)) {
     throw new IdentityError('invalid_event', 'Cet événement est invalide. Rechargez la page.');
   }
+  return signIdentity(`jemecompte.fr\0presence:v1\0${eventId}`);
+}
+
+/** A server-supplied Paris day scopes deduplication without a shared permanent identifier. */
+export async function getDailySupportIdentity(day: string): Promise<string> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) ||
+      !Number.isFinite(Date.parse(`${day}T00:00:00Z`)) ||
+      new Date(`${day}T00:00:00Z`).toISOString().slice(0, 10) !== day) {
+    throw new IdentityError('invalid_day', 'Le jour du soutien est invalide. Rechargez la page.');
+  }
+  return signIdentity(`jemecompte.fr\0support-day:v1\0${day}`);
+}
+
+async function signIdentity(context: string): Promise<string> {
   const key = await getLocalKey();
-  const message = new TextEncoder().encode(`jemecompte.fr\0presence:v1\0${eventId}`);
+  const message = new TextEncoder().encode(context);
   const result = new Uint8Array(await crypto.subtle.sign('HMAC', key, message));
   return btoa(String.fromCharCode(...result))
     .replace(/\+/g, '-')

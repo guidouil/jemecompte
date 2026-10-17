@@ -43,7 +43,7 @@ describe('private backoffice cache boundary', () => {
       expect(shouldHandlePublicRequest(request(path), origin, staticPaths)).toBe(true);
       expect(shouldStorePublicResponse(request(path), response(path), origin, staticPaths)).toBe(true);
     }
-    for (const path of ['/?/delete', '/api/events/1234/presences', '/api/events/1234/presence-status', '/api/events/1234/stream', '/internal/metrics', 'https://elsewhere.example/']) {
+    for (const path of ['/?/delete', '/api/events/1234/presences', '/api/events/1234/presence-status', '/api/events/1234/supports', '/api/events/1234/support-status', '/api/events/1234/stream', '/internal/metrics', 'https://elsewhere.example/']) {
       expect(shouldHandlePublicRequest(request(path), origin, staticPaths)).toBe(false);
     }
     expect(isPrivatePath('/guide')).toBe(false);

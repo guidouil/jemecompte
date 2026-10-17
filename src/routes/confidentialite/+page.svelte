@@ -10,7 +10,7 @@
     try {
       await eraseLocalIdentity();
       confirmErase = false;
-      eraseMessage = 'L’identité locale a été effacée de ce navigateur. Les éventuelles participations déjà reçues par le serveur ne sont pas supprimées par cette action.';
+      eraseMessage = 'L’identité locale a été effacée de ce navigateur. Les participations, soutiens et marqueurs quotidiens déjà reçus par le serveur restent conservés selon leurs échéances.';
     } catch {
       eraseMessage = 'L’effacement n’a pas pu être confirmé. Vous pouvez réessayer ou utiliser les réglages du navigateur pour effacer les données de ce site.';
     } finally {
@@ -28,13 +28,13 @@
   <a href="/" class="back-link">← Retour au comptage</a>
   <p class="eyebrow">CONFIDENTIALITÉ</p>
   <h1>Compter.<br />Sans vous suivre.</h1>
-  <p class="information-lead">Vous pouvez vous compter sans compte, sans donner votre nom, votre adresse e-mail ou votre numéro de téléphone. Votre position précise reste dans votre navigateur.</p>
+  <p class="information-lead">Vous pouvez participer ou soutenir sans compte, sans donner votre nom, votre adresse e-mail ou votre numéro de téléphone. Le soutien à distance ne demande aucune position. Pour participer dans un périmètre, votre position précise reste dans votre navigateur.</p>
   <p class="policy-date">Dernière mise à jour : <time datetime="2026-10-17">17 octobre 2026</time></p>
 
   <aside class="privacy-summary" aria-label="Les engagements essentiels">
     <p><strong>Pas de GPS enregistré.</strong> La vérification de votre position se fait sur votre appareil, sans suivi continu.</p>
     <p><strong>Pas de suivi publicitaire.</strong> Aucun outil de mesure d’audience, pixel marketing ou empreinte numérique de votre appareil.</p>
-    <p><strong>Un comptage, pas un fichier de noms.</strong> Un identifiant temporairement conservé par événement permet d’éviter les doublons.</p>
+    <p><strong>Des identifiants pseudonymes.</strong> Un identifiant par événement évite les doublons. Un marqueur distinct, qui change chaque jour de Paris, limite les soutiens à un événement par jour.</p>
   </aside>
 
   <nav class="privacy-navigation" aria-label="Sur cette page">
@@ -47,7 +47,7 @@
   <section class="prose-section" aria-labelledby="responsable">
     <h2 id="responsable">Qui est responsable du service ?</h2>
     <p>JeMeCompte.fr est un projet porté en nom propre par <strong>Guillaume Darbonne</strong>, responsable du traitement des données du service. Pour toute question ou demande : <a href="mailto:guidouil@gmail.com">guidouil@gmail.com</a>.</p>
-    <p>Les données servent à recevoir votre déclaration de présence, éviter qu’une même identité locale soit comptée plusieurs fois pour un événement, publier les compteurs et protéger la disponibilité du service. Elles ne sont ni vendues ni utilisées pour de la publicité ou du profilage commercial.</p>
+    <p>Les données servent à recevoir votre déclaration de présence ou votre soutien, éviter les doublons dans un événement et limiter une identité locale à un événement soutenu par jour de Paris, publier les compteurs et protéger la disponibilité du service. Elles ne sont ni vendues ni utilisées pour de la publicité ou du profilage commercial.</p>
   </section>
 
   <section class="prose-section" aria-labelledby="donnees">
@@ -58,12 +58,16 @@
         <dd>Utilisée ponctuellement dans la mémoire du navigateur pour vérifier le périmètre ou rechercher les rassemblements proches. Le site ne la transmet pas à son serveur et ne l’enregistre pas. Aucun historique de déplacement n’est constitué.</dd>
       </div>
       <div>
-        <dt>Votre participation</dt>
-        <dd>Le serveur conserve trois éléments : l’événement, un identifiant pseudonyme propre à cet événement et le jour du comptage. Cette ligne ne contient ni nom, ni IP, ni coordonnées GPS, ni heure précise de participation.<span class="retention">Suppression programmée à partir de 48 heures après la fin de l’événement ; les totaux sont conservés.</span></dd>
+        <dt>Votre participation ou votre soutien</dt>
+        <dd>Le serveur conserve trois éléments dans la catégorie concernée : l’événement, un identifiant pseudonyme propre à cet événement et le jour du comptage. Le même identifiant sert à éviter le cumul d’une présence et d’un soutien pour cet événement. Cette ligne ne contient ni nom, ni IP, ni coordonnées GPS, ni heure précise.<span class="retention">Suppression programmée à partir de 48 heures après la fin de l’événement ; les totaux de participation et de soutien sont conservés séparément.</span></dd>
+      </div>
+      <div>
+        <dt>Votre choix de soutien du jour</dt>
+        <dd>Une table distincte conserve seulement le jour de Paris et un marqueur dérivé du secret local, commun aux événements de ce jour, sans référence d’événement ni heure précise. Ce marqueur change chaque jour. Il empêche un deuxième choix de soutien pendant cette journée, même si votre soutien devient une présence.<span class="retention">Les marqueurs des jours de Paris passés sont supprimés par la tâche de purge et lors des demandes de soutien. La suppression n’est pas garantie à la seconde du passage à minuit ; les sauvegardes ont leur propre rétention.</span></dd>
       </div>
       <div>
         <dt>Le secret de votre navigateur</dt>
-        <dd>Créé aléatoirement sur votre appareil, il permet de retrouver le même identifiant pour un événement. Ce secret n’est pas envoyé au serveur.<span class="retention">Conservé dans le stockage du navigateur, sans expiration automatique, jusqu’à son effacement par vous ou par le navigateur.</span></dd>
+        <dd>Créé aléatoirement sur votre appareil et conservé comme clé non exportable, il produit l’identifiant propre à chaque événement et le marqueur temporaire de soutien du jour. Ce secret n’est pas envoyé au serveur.<span class="retention">Conservé dans le stockage du navigateur, sans expiration automatique, jusqu’à son effacement par vous ou par le navigateur.</span></dd>
       </div>
       <div>
         <dt>Les signaux de protection</dt>
@@ -79,20 +83,21 @@
       </div>
     </dl>
     <p>La tâche de purge s’exécute toutes les 15 minutes. Un incident ou une incohérence des compteurs peut retarder une suppression et nécessiter une intervention : 48 heures est l’échéance prévue, pas une garantie d’effacement à la seconde près. Les copies de sauvegarde ont un cycle de conservation distinct, décrit ci-dessous.</p>
-    <p><strong>« Sans compte » ne signifie pas « aucune donnée stockée ».</strong> L’identifiant change d’un événement à l’autre et n’est pas votre identité civile. Il reste cependant une donnée pseudonyme tant qu’il est conservé. Nous ne promettons pas un anonymat absolu ni l’impossibilité de toute corrélation, notamment par les données réseau.</p>
+    <p><strong>« Sans compte » ne signifie pas « aucune donnée stockée ».</strong> L’identifiant événementiel change d’un événement à l’autre et n’est pas votre identité civile. Le marqueur de soutien du jour est commun aux demandes de soutien de cette journée, puis change le lendemain. Ces éléments restent des données pseudonymes tant qu’ils sont conservés. Le serveur peut observer les requêtes, dont l’événement et les marqueurs reçus ensemble : séparer leur stockage ne supprime pas toute possibilité de rapprochement. Nous ne promettons pas un anonymat absolu ni l’impossibilité de toute corrélation, notamment par les données réseau.</p>
   </section>
 
   <section class="prose-section" aria-labelledby="localisation">
     <h2 id="localisation">La localisation reste sur votre appareil</h2>
-    <p>Après votre action et l’autorisation du navigateur, le site compare votre position au périmètre public de l’événement. Le serveur reçoit le résultat de cette vérification, l’identifiant propre à l’événement et les versions du protocole et du périmètre ; il ne reçoit pas le point GPS.</p>
+    <p><strong>Soutenir à distance ne demande aucune géolocalisation et n’affirme aucune présence dans la zone.</strong></p>
+    <p>Pour déclarer une participation, après votre action et l’autorisation du navigateur, le site compare votre position au périmètre public de l’événement. Le serveur reçoit le résultat de cette vérification, l’identifiant propre à l’événement et les versions du protocole et du périmètre ; il ne reçoit pas le point GPS.</p>
     <p>« Autour de moi » calcule également les distances sur votre appareil. La position n’est pas ajoutée à l’adresse de la page ni au stockage du site. Les filtres s’appliquent localement au catalogue chargé, limité à 500 rassemblements.</p>
     <p>Le navigateur, le système de votre téléphone et leur fournisseur de localisation peuvent traiter des données pour déterminer votre position, selon leurs propres règles. L’autorisation native de géolocalisation est une permission technique ; elle ne remplace pas un éventuel consentement juridique au traitement d’une participation.</p>
   </section>
 
   <section class="prose-section" aria-labelledby="navigateur">
     <h2 id="navigateur">Ce qui reste dans votre navigateur</h2>
-    <p>Le secret local sert uniquement à l’unicité par événement. Aucun cookie publicitaire, identifiant de suivi entre sites, outil de fingerprinting ou Google Analytics n’est intégré. Les polices et les ressources de l’interface sont servies par JeMeCompte.</p>
-    <p>La PWA peut conserver des fichiers et des pages publiques consultées pour fonctionner en réseau dégradé. Les pages et compteurs peuvent être réaffichés hors connexion pendant 24 heures après leur mise en cache ; ce délai ne garantit pas la suppression physique de tous les fichiers à 24 heures. Le cache ne contient pas de position GPS ni de file d’attente de participations.</p>
+    <p>Le secret local sert à l’unicité par événement et au choix quotidien de soutien. Aucun identifiant global commun aux événements et durable entre journées n’est transmis pour ces soutiens. Aucun cookie publicitaire, identifiant de suivi entre sites, outil de fingerprinting ou Google Analytics n’est intégré. Les polices et les ressources de l’interface sont servies par JeMeCompte.</p>
+    <p>La PWA peut conserver des fichiers et des pages publiques consultées pour fonctionner en réseau dégradé. Les pages et compteurs peuvent être réaffichés hors connexion pendant 24 heures après leur mise en cache ; ce délai ne garantit pas la suppression physique de tous les fichiers à 24 heures. Le cache ne contient pas de position GPS ni de file d’attente de participations ou de soutiens.</p>
     <p>Après votre confirmation de publication d’un rassemblement, le site peut conserver uniquement la configuration publique, l’UUID de cette demande et sa date d’enregistrement dans le <code>sessionStorage</code> de cet onglet pour reprendre le même envoi après un rechargement. Cette reprise ne contient ni position GPS, ni secret ou identifiant de participant. Le site retire cet enregistrement après une réponse de création réussie, un rejet définitif pour demande invalide ou un abandon confirmé, et lors de la prochaine consultation s’il dépasse 24 heures. La fermeture ou la restauration d’un onglet dépend des règles du navigateur ; ce délai ne garantit pas une suppression physique à la minute près. Si le stockage est indisponible, un message indique que la reprise reste limitée à la page ouverte.</p>
     <p>Ces pages peuvent révéler les rassemblements consultés à une personne ayant accès à votre appareil. Le bouton en bas de cette page efface seulement le secret local. Pour supprimer aussi les pages et fichiers en cache, utilisez l’effacement des données du site dans les réglages du navigateur.</p>
   </section>
@@ -115,16 +120,16 @@
   <section class="prose-section" aria-labelledby="limites">
     <h2 id="limites">Ce que le compteur permet de dire</h2>
     <p>La portée est indiquée sur chaque fiche : rassemblement localisé ou commune entière. Un comptage de commune recueille des déclarations dans tout le contour communal affiché ; il ne confirme aucun lieu ni horaire de manifestation et ne prouve pas qu’une personne a participé à une manifestation. Les totaux des deux portées sont présentés séparément. Une même personne peut contribuer aux deux.</p>
-    <p>Le chiffre indique combien de participations ont été acceptées pour un événement. Ce n’est ni un recensement exhaustif de la foule ni la garantie d’une personne unique par participation. Un autre navigateur, l’effacement du stockage ou une position falsifiée peuvent contourner les protections. Un périmètre large et un très petit groupe limitent également ce que l’on peut déduire du chiffre.</p>
-    <p>Selon le rassemblement, une participation peut révéler des opinions politiques, des convictions ou une appartenance syndicale. La pseudonymisation ne supprime pas cette sensibilité. <strong>Les fondements juridiques applicables au comptage et, le cas échéant, aux données sensibles restent à faire valider.</strong> Cette page décrit le fonctionnement réel du service ; elle ne constitue pas une certification de conformité.</p>
+    <p>Le compteur principal additionne les participations et les soutiens acceptés, avec le détail des deux catégories dessous. Le soutien ne vérifie aucune présence. Ce total n’est ni un recensement exhaustif de la foule, ni un nombre de personnes sur place, ni la garantie de personnes uniques. Un autre navigateur, l’effacement du stockage ou une position falsifiée peuvent contourner les protections. Un périmètre large et un très petit groupe limitent également ce que l’on peut déduire du chiffre.</p>
+    <p>Selon le rassemblement, une participation ou un soutien peut révéler des opinions politiques, des convictions ou une appartenance syndicale. La pseudonymisation ne supprime pas cette sensibilité. <strong>Les fondements juridiques applicables au comptage et, le cas échéant, aux données sensibles restent à faire valider.</strong> Cette page décrit le fonctionnement réel du service ; elle ne constitue pas une certification de conformité.</p>
     <p>Le protocole et le code sont publics : <a href="https://github.com/guidouil/jemecompte" rel="noreferrer">consulter le code source</a> ou <a href="/comment-ca-marche">comprendre la méthode et ses limites</a>.</p>
   </section>
 
   <section class="prose-section" aria-labelledby="droits">
     <h2 id="droits">Vos droits et votre contact</h2>
     <p>Pour une question, une demande d’accès, de rectification, d’effacement, de limitation ou d’opposition, ou le retrait d’un consentement lorsqu’il s’applique, contactez <strong>Guillaume Darbonne</strong> à <a href="mailto:guidouil@gmail.com">guidouil@gmail.com</a>. Les demandes sont examinées selon les données encore conservées et les droits applicables.</p>
-    <p>Nous ne disposons pas de compte ou de nom permettant de retrouver automatiquement votre participation. Cela n’exclut pas vos droits : des informations complémentaires peuvent parfois permettre de traiter une demande. Nous ne collectons pas une nouvelle identité uniquement pour vous identifier. N’envoyez jamais votre secret local, vos coordonnées GPS ou une pièce d’identité spontanément ; indiquez d’abord l’événement concerné et votre demande.</p>
-    <p>Après la purge, la base active ne contient plus de ligne individuelle à retrouver pour cet événement. Les compteurs restent conservés. Effacer votre navigateur ne retire pas une participation déjà reçue par le serveur.</p>
+    <p>Nous ne disposons pas de compte ou de nom permettant de retrouver automatiquement votre participation ou votre soutien. Cela n’exclut pas vos droits : des informations complémentaires peuvent parfois permettre de traiter une demande. Nous ne collectons pas une nouvelle identité uniquement pour vous identifier. N’envoyez jamais votre secret local, vos coordonnées GPS ou une pièce d’identité spontanément ; indiquez d’abord l’événement concerné et votre demande.</p>
+    <p>Après la purge, la base active ne contient plus de ligne individuelle à retrouver pour cet événement. Les compteurs restent conservés. Effacer votre navigateur ne retire pas une participation, un soutien ou un marqueur quotidien déjà reçu par le serveur.</p>
     <p>Si vous écrivez par e-mail, votre adresse et votre message sont reçus dans la messagerie Gmail du responsable pour traiter votre demande. Cette correspondance est distincte du comptage ; aucune purge automatique n’est actuellement appliquée à cette boîte. Limitez votre message aux informations utiles.</p>
     <p>Vous pouvez également adresser une réclamation à la <a href="https://www.cnil.fr/fr/adresser-une-plainte" rel="noreferrer">Commission nationale de l’informatique et des libertés (CNIL)</a>.</p>
   </section>
@@ -132,9 +137,9 @@
   <section class="erase-section" aria-labelledby="erase-heading">
     <p class="eyebrow">SUR CET APPAREIL</p>
     <h2 id="erase-heading">Effacer mon identité locale</h2>
-    <p>Cette action retire le secret de ce navigateur. Elle ne supprime ni une participation reçue par le serveur, ni les pages en cache, ni les journaux de l’hébergeur. Vous pouvez perdre le moyen de reconnaître une participation passée. Pour une demande concernant le serveur, contactez-nous avant cet effacement.</p>
+    <p>Cette action retire le secret de ce navigateur. Elle ne supprime ni les participations, soutiens ou marqueurs quotidiens reçus par le serveur, ni les pages en cache, ni les journaux de l’hébergeur. Vous pouvez perdre le moyen de reconnaître une participation ou un soutien passé. Pour une demande concernant le serveur, contactez-nous avant cet effacement.</p>
     {#if confirmErase}
-      <div class="notice"><p><strong>L’effacement est irréversible pour ce navigateur.</strong> Vérifiez que vous n’avez pas une participation en attente dans un autre onglet.</p><div class="inline-actions"><button type="button" class="secondary-button" onclick={erase} disabled={erasing}>{erasing ? 'Effacement…' : 'Confirmer l’effacement local'}</button><button type="button" class="text-button" disabled={erasing} onclick={() => { confirmErase = false; }}>Annuler</button></div></div>
+      <div class="notice"><p><strong>L’effacement est irréversible pour ce navigateur.</strong> Vérifiez que vous n’avez pas une participation ou un soutien en attente dans un autre onglet.</p><div class="inline-actions"><button type="button" class="secondary-button" onclick={erase} disabled={erasing}>{erasing ? 'Effacement…' : 'Confirmer l’effacement local'}</button><button type="button" class="text-button" disabled={erasing} onclick={() => { confirmErase = false; }}>Annuler</button></div></div>
     {:else}
       <button type="button" class="secondary-button" onclick={() => { confirmErase = true; eraseMessage = ''; }}>Effacer sur ce navigateur</button>
     {/if}

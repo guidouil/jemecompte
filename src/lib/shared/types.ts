@@ -37,6 +37,12 @@ export interface CounterSnapshot {
   nationalRevision: string;
   cityTotal: string;
   cityRevision: string;
+  supportTotal?: string;
+  supportRevision?: string;
+  nationalSupportTotal?: string;
+  nationalSupportRevision?: string;
+  citySupportTotal?: string;
+  citySupportRevision?: string;
   epoch: string;
   serverTime: string;
   eventStatus: EventStatus;
@@ -68,6 +74,32 @@ export interface ParticipationReply {
 
 export interface PresenceStatusReply {
   status: 'counted' | 'not_counted' | 'details_expired';
+  snapshot: CounterSnapshot;
+}
+
+export interface SupportPayload {
+  anonymousEventId: string;
+  anonymousDayId: string;
+  day: string;
+  protocolVersion: 1;
+  countingScope?: CountingScope;
+}
+
+export type SupportStatus = AdmissionStatus
+  | 'supported'
+  | 'already_supported'
+  | 'already_present'
+  | 'daily_limit_reached'
+  | 'day_changed';
+
+export interface SupportReply {
+  status: SupportStatus;
+  snapshot?: CounterSnapshot;
+  retryAfter?: number;
+}
+
+export interface SupportStatusReply {
+  status: 'supported' | 'present' | 'not_supported' | 'details_expired';
   snapshot: CounterSnapshot;
 }
 

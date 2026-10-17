@@ -3,6 +3,8 @@ import type { CounterSnapshot } from '../shared/types';
 const decimal = /^(0|[1-9][0-9]{0,39})$/;
 const statuses = new Set(['draft', 'published', 'paused', 'closed', 'cancelled']);
 const integrityStatuses = new Set(['normal', 'anomaly', 'suspended']);
+const supportFields = ['supportTotal', 'supportRevision', 'nationalSupportTotal',
+  'nationalSupportRevision', 'citySupportTotal', 'citySupportRevision'] as const;
 
 export function parseCounterSnapshot(value: unknown): CounterSnapshot | undefined {
   if (!value || typeof value !== 'object') return;
@@ -15,6 +17,9 @@ export function parseCounterSnapshot(value: unknown): CounterSnapshot | undefine
     !['total', 'revision', 'nationalTotal', 'nationalRevision', 'cityTotal', 'cityRevision', 'epoch'].every(
       (key) => typeof snapshot[key] === 'string' && decimal.test(snapshot[key] as string)
     ) ||
+    (supportFields.some((key) => snapshot[key] !== undefined) && !supportFields.every(
+      (key) => typeof snapshot[key] === 'string' && decimal.test(snapshot[key] as string)
+    )) ||
     BigInt(snapshot.epoch as string) < 1n ||
     !['serverTime', 'startsAt', 'endsAt'].every(
       (key) => typeof snapshot[key] === 'string' && Number.isFinite(Date.parse(snapshot[key] as string))
@@ -43,12 +48,21 @@ export function mergeCounterSnapshots(
     merged.total = incoming.total;
     merged.revision = incoming.revision;
   }
+  if (incoming.supportRevision !== undefined && incoming.supportTotal !== undefined &&
+      (current.supportRevision === undefined || BigInt(incoming.supportRevision) > BigInt(current.supportRevision))) {
+    merged.supportTotal = incoming.supportTotal;
+    merged.supportRevision = incoming.supportRevision;
+  }
   if (incoming.day > current.day) {
     merged.day = incoming.day;
     merged.nationalTotal = incoming.nationalTotal;
     merged.nationalRevision = incoming.nationalRevision;
     merged.cityTotal = incoming.cityTotal;
     merged.cityRevision = incoming.cityRevision;
+    merged.nationalSupportTotal = incoming.nationalSupportTotal;
+    merged.nationalSupportRevision = incoming.nationalSupportRevision;
+    merged.citySupportTotal = incoming.citySupportTotal;
+    merged.citySupportRevision = incoming.citySupportRevision;
   } else if (incoming.day === current.day) {
     // These revisions are sums across events: deleting an event lowers them.
     // The newer database reading is authoritative, including legitimate decreases.
@@ -57,6 +71,18 @@ export function mergeCounterSnapshots(
       merged.nationalRevision = incoming.nationalRevision;
       merged.cityTotal = incoming.cityTotal;
       merged.cityRevision = incoming.cityRevision;
+      if (incoming.nationalSupportTotal !== undefined) {
+        merged.nationalSupportTotal = incoming.nationalSupportTotal;
+        merged.nationalSupportRevision = incoming.nationalSupportRevision;
+        merged.citySupportTotal = incoming.citySupportTotal;
+        merged.citySupportRevision = incoming.citySupportRevision;
+      }
+    } else if (incoming.serverTime === current.serverTime && current.nationalSupportTotal === undefined &&
+        incoming.nationalSupportTotal !== undefined) {
+      merged.nationalSupportTotal = incoming.nationalSupportTotal;
+      merged.nationalSupportRevision = incoming.nationalSupportRevision;
+      merged.citySupportTotal = incoming.citySupportTotal;
+      merged.citySupportRevision = incoming.citySupportRevision;
     }
   }
   if (incoming.metadataVersion > current.metadataVersion) {

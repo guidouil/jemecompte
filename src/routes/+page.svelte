@@ -4,6 +4,6 @@
   let { data }: { data: PageData } = $props();
 </script>
 
-<svelte:head><title>JeMeCompte — chaque présence compte</title></svelte:head>
+<svelte:head><title>JeMeCompte — participations et soutiens</title></svelte:head>
 
-<CountExperience events={data.events} selectedEvent={data.selectedEvent} snapshot={data.snapshot} nationalTotal={data.nationalTotal} nationalCityTotal={data.nationalCityTotal} nationalLoadedAt={data.nationalLoadedAt} serviceAvailable={data.serviceAvailable} />
+<CountExperience events={data.events} selectedEvent={data.selectedEvent} snapshot={data.snapshot} nationalTotal={data.nationalTotal} nationalCityTotal={data.nationalCityTotal} nationalSupportTotal={data.nationalSupportTotal} nationalCitySupportTotal={data.nationalCitySupportTotal} nationalLoadedAt={data.nationalLoadedAt} serviceAvailable={data.serviceAvailable} />
